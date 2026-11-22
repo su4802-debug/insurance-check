@@ -1,0 +1,1005 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>보험료 고지 대사</title><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 한 장짜리 작업 도구 — 상단 메뉴(대사/이름구분), 업로드 → 요약 → 미매칭 → 상세 순으로 아래로 흐름 */
+:root{
+  --bg:#f4f6f5; --surface:#ffffff; --ink:#16201c; --muted:#5b6964; --line:#dbe2df; --line-strong:#c3ccc8;
+  --accent:#1d5e50; --accent-ink:#ffffff; --accent-weak:#e2efeb;
+  --warn:#9a4a07; --warn-weak:#fcefdc; --bad:#b42318; --bad-weak:#fdeceb; --ok:#2d7340; --ok-weak:#e5f3e8;
+  --font-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --surface:#171f1c; --ink:#e4ebe8; --muted:#97a5a0; --line:#28332f; --line-strong:#3a4743;
+  --accent:#62b8a3; --accent-ink:#0c1512; --accent-weak:#1b2f29;
+  --warn:#f0ab5e; --warn-weak:#38290f; --bad:#f28b82; --bad-weak:#3b1c1a; --ok:#7fc98d; --ok-weak:#18301f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --surface:#171f1c; --ink:#e4ebe8; --muted:#97a5a0; --line:#28332f; --line-strong:#3a4743;
+  --accent:#62b8a3; --accent-ink:#0c1512; --accent-weak:#1b2f29;
+  --warn:#f0ab5e; --warn-weak:#38290f; --bad:#f28b82; --bad-weak:#3b1c1a; --ok:#7fc98d; --ok-weak:#18301f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:22px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:16px;font-weight:600;margin:0;text-wrap:balance}
+p{margin:0}
+.muted{color:var(--muted)}
+.mono,td.n,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+header.top{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+header.top nav.tabs{flex-wrap:wrap;max-width:100%}
+.sub{color:var(--muted);font-size:13px;margin-top:4px}
+nav.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px}
+nav.tabs button{border:0;background:transparent;color:var(--muted);font:inherit;font-weight:500;padding:7px 14px;border-radius:7px;cursor:pointer;display:flex;gap:6px;align-items:center}
+nav.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.badge{font-family:var(--font-mono);font-size:11px;padding:1px 6px;border-radius:99px;background:var(--accent-weak);color:var(--accent)}
+nav.tabs button[aria-selected="true"] .badge{background:rgba(255,255,255,.22);color:inherit}
+section.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.drop{border:1.5px dashed var(--line-strong);border-radius:10px;padding:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;transition:background .15s,border-color .15s}
+.drop.over{background:var(--accent-weak);border-color:var(--accent)}
+.slot{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--bg);min-width:0}
+.slot .lbl{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--muted)}
+.slot .fname{font-size:13px;word-break:break-all}
+.slot.ok{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.slot.err{border-color:var(--bad)}
+.slot .state{font-size:12px}
+.slot.ok .state{color:var(--ok)} .slot.err .state{color:var(--bad)}
+.slot label.pick{align-self:flex-start}
+.hint{font-size:12.5px;color:var(--muted)}
+.btn{font:inherit;font-weight:500;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);padding:7px 13px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.small{padding:4px 9px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,label.pick:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
+input.txt{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:6px;padding:5px 8px;width:100%;min-width:0}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+thead th{background:var(--bg);font-weight:600;font-size:12px;color:var(--muted);position:sticky;top:0}
+th.grp{text-align:center;border-left:1px solid var(--line);color:var(--ink)}
+td.n,th.n{text-align:right}
+td.bl{border-left:1px solid var(--line)}
+tr.tot td{font-weight:600;background:var(--bg);border-bottom:0}
+td.d-pos{background:var(--warn-weak);color:var(--warn)}
+td.d-neg{background:var(--bad-weak);color:var(--bad)}
+td.zero{color:var(--line-strong)}
+.chip{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:99px;background:var(--bg);border:1px solid var(--line);color:var(--muted);margin-right:3px}
+.chip.bad{background:var(--bad-weak);border-color:transparent;color:var(--bad)}
+.chip.warn{background:var(--warn-weak);border-color:transparent;color:var(--warn)}
+.chip.acc{background:var(--accent-weak);border-color:transparent;color:var(--accent)}
+/* 비고 종류별 색 */
+:root{--n-quit:#0e7490;--n-quit-bg:#dcf2f7;--n-miss:#b42318;--n-miss-bg:#fdeceb;--n-nopay:#9d174d;--n-nopay-bg:#fce7f3;--n-alias:#2d7340;--n-alias-bg:#e3f3e6;--n-acq:#1d4ed8;--n-acq-bg:#e6eefc;--n-lost:#6d28d9;--n-lost-bg:#efe9fb;--n-retro:#7a5c00;--n-retro-bg:#fbf3cf;--n-site:#475467;--n-site-bg:#eceff3}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--n-quit:#67d4ea;--n-quit-bg:#0f3038;--n-miss:#f28b82;--n-miss-bg:#3b1c1a;--n-nopay:#f49ac7;--n-nopay-bg:#3a1a2b;--n-alias:#62b8a3;--n-alias-bg:#1b2f29;--n-acq:#8fb4ff;--n-acq-bg:#17243d;--n-lost:#c4a6ff;--n-lost-bg:#2a1f42;--n-retro:#e8cc6a;--n-retro-bg:#332b0f;--n-site:#b3bdc9;--n-site-bg:#262d35}}
+:root[data-theme="dark"]{--n-quit:#67d4ea;--n-quit-bg:#0f3038;--n-miss:#f28b82;--n-miss-bg:#3b1c1a;--n-nopay:#f49ac7;--n-nopay-bg:#3a1a2b;--n-alias:#62b8a3;--n-alias-bg:#1b2f29;--n-acq:#8fb4ff;--n-acq-bg:#17243d;--n-lost:#c4a6ff;--n-lost-bg:#2a1f42;--n-retro:#e8cc6a;--n-retro-bg:#332b0f;--n-site:#b3bdc9;--n-site-bg:#262d35}
+.chip.n-quit{background:var(--n-quit-bg);color:var(--n-quit);border-color:transparent}
+.chip.n-miss{background:var(--n-miss-bg);color:var(--n-miss);border-color:transparent}
+.chip.n-nopay{background:var(--n-nopay-bg);color:var(--n-nopay);border-color:transparent}
+.chip.n-alias{background:var(--n-alias-bg);color:var(--n-alias);border-color:transparent}
+.chip.n-acq{background:var(--n-acq-bg);color:var(--n-acq);border-color:transparent}
+.chip.n-lost{background:var(--n-lost-bg);color:var(--n-lost);border-color:transparent}
+.chip.n-retro{background:var(--n-retro-bg);color:var(--n-retro);border-color:transparent}
+.chip.n-site{background:var(--n-site-bg);color:var(--n-site);border-color:transparent}
+.chip.n-etc{background:var(--bg);color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;color:var(--muted)}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.site{border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:var(--bg);min-width:0}
+.site .t{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.site .t b{font-size:15px}
+.site dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0;font-size:12.5px}
+.site dt{color:var(--muted)} .site dd{margin:0;text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.st{font-weight:600}
+.st.ok{color:var(--ok)} .st.bad{color:var(--bad)}
+.subtabs{display:flex;flex-wrap:wrap;gap:6px}
+.subtabs button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--muted);padding:5px 11px;border-radius:99px;cursor:pointer}
+.subtabs button[aria-selected="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-weak);font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.spacer{flex:1}
+.toggle{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
+.unm{display:flex;flex-direction:column;gap:8px}
+.unm-item{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.unm-item .who{display:flex;flex-direction:column}
+.unm-item .who small{color:var(--muted);font-size:11.5px}
+@media (max-width:560px){.unm-item{grid-template-columns:1fr}}
+.out-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin:0;padding:0;list-style:none}
+.out-list li{border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:13px;background:var(--bg)}
+.out-list li b{display:block;font-family:var(--font-mono);font-size:12.5px;font-weight:500}
+.msg{padding:10px 12px;border-radius:8px;font-size:13px}
+.msg.err{background:var(--bad-weak);color:var(--bad)}
+.msg.info{background:var(--accent-weak);color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+.alias-table td{padding:4px 6px}
+.alias-table td.idx{color:var(--muted);font-family:var(--font-mono);font-size:12px;width:44px}
+.alias-table tr.on td{background:var(--accent-weak)}
+/* 상세 비교: 한 화면 맞춤 */
+#detail{table-layout:fixed;min-width:980px;font-size:12px}
+#detail th,#detail td{padding:5px 5px}
+#detail col.c-name{width:112px} #detail col.c-work{width:52px} #detail col.c-note{width:230px}
+#detail td.nmc{overflow:hidden}
+#detail .nm{display:block;white-space:nowrap;overflow:hidden;font-weight:500;line-height:1.3}
+#detail td.note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#detail td.note .chip{margin:1px 2px 1px 0;font-size:11px}
+#detail td.muted{overflow:hidden;text-overflow:ellipsis}
+.label-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.label-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1 id="page-title">건강보험 고지 대사</h1>
+      <p class="sub" id="page-sub"></p>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-view="hi">건강보험</button>
+      <button role="tab" aria-selected="false" data-view="np">국민연금</button>
+      <button role="tab" aria-selected="false" data-view="alias">이름구분 관리 <span class="badge" id="alias-count">0</span></button>
+    </nav>
+  </header>
+
+  <!-- ============ 대사 실행 (건강보험 / 국민연금 공용 화면) ============ -->
+  <div id="view-run" class="wrap" style="gap:20px">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>1. 파일 올리기</h2>
+        <span class="hint">여러 파일을 한 번에 끌어다 놓으면 종류를 자동으로 구분합니다 (.xls / .xlsx). 급여대장·직원명부는 두 메뉴가 함께 씁니다.</span>
+      </div>
+      <div class="drop" id="drop">
+        <div class="slot" id="slot-pay"><span class="lbl">급여대장 <span class="chip">공통</span></span><span class="fname muted"></span><span class="state"></span>
+          <label class="btn small pick">파일 선택<input type="file" data-kind="pay" accept=".xls,.xlsx,.xlsm,.csv"></label></div>
+        <div class="slot" id="slot-roster"><span class="lbl">직원명부 <span class="chip">공통</span></span><span class="fname muted"></span><span class="state"></span>
+          <label class="btn small pick">파일 선택<input type="file" data-kind="roster" accept=".xls,.xlsx,.xlsm,.csv"></label></div>
+        <div class="slot" id="slot-notice"><span class="lbl" id="notice-lbl"></span><span class="fname muted"></span><span class="state"></span>
+          <label class="btn small pick">파일 선택<input type="file" data-kind="notice" accept=".xls,.xlsx,.xlsm,.csv"></label></div>
+      </div>
+      <div id="run-msg"></div>
+    </section>
+
+    <section class="panel" id="empty-out">
+      <h2>만들어지는 최종파일</h2>
+      <p class="muted">세 파일이 모두 올라가면 바로 분석합니다. 결과 엑셀은 목적파일과 같은 구성으로 만들어집니다.</p>
+      <ul class="out-list" id="out-list"></ul>
+    </section>
+
+    <div id="results" hidden class="wrap" style="gap:20px">
+      <section class="panel">
+        <div class="panel-head">
+          <div><h2 id="res-title">2. 사업장별 요약</h2><p class="hint" id="res-sub"></p></div>
+          <button class="btn primary" id="btn-download">최종파일 내려받기 (.xlsx)</button>
+        </div>
+        <div class="summary" id="summary"></div>
+        <details>
+          <summary class="hint" style="cursor:pointer">사업장 표시명 바꾸기 (시트 이름에 쓰임 · 두 메뉴 공통)</summary>
+          <div class="label-grid" id="label-grid" style="margin-top:10px"></div>
+        </details>
+      </section>
+
+      <section class="panel" id="unmatched-panel">
+        <div class="panel-head">
+          <div><h2>3. 이름 확인 필요</h2><p class="hint">고지서 성명을 급여대장에서 찾지 못했습니다. 이름이 다르게 등록된 경우 급여대장 이름을 골라 연결하면 이름구분에 저장되고 바로 다시 분석됩니다.</p></div>
+        </div>
+        <div class="unm" id="unmatched"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>4. 상세 비교</h2>
+          <label class="toggle"><input type="checkbox" id="only-diff"> 차이 있는 행만</label>
+        </div>
+        <div class="subtabs" id="site-tabs" role="tablist"></div>
+        <div class="legend" id="note-legend"></div>
+        <div class="scroll"><table id="detail"></table></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============ 이름구분 관리 ============ -->
+  <div id="view-alias" hidden class="wrap" style="gap:20px">
+    <section class="panel">
+      <div class="panel-head">
+        <div><h2>이름구분</h2><p class="hint">A열 = 공단 고지서 성명, B열 = 급여대장 이름. 건강보험·국민연금 대사에 함께 쓰이고, B열이 채워진 행만 적용됩니다. 바꾼 내용은 이 브라우저에 저장되고 다음 분석에 반영됩니다.</p></div>
+        <div class="row">
+          <label class="btn pick">이름구분 파일 올리기<input type="file" id="f-alias" accept=".xls,.xlsx,.xlsm,.csv"></label>
+          <button class="btn" id="btn-alias-dl">엑셀로 내려받기</button>
+        </div>
+      </div>
+      <div id="alias-msg"></div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="alias-only" checked> 연결된 이름만 보기</label>
+        <input class="txt" id="alias-q" placeholder="이름 검색" style="max-width:220px">
+        <span class="spacer"></span>
+        <span class="hint" id="alias-stamp"></span>
+        <button class="btn small" id="btn-alias-add">+ 행 추가</button>
+      </div>
+      <div class="scroll"><table class="alias-table" id="alias-table"></table></div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<datalist id="pay-names"></datalist>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+/* ==== CORE: 공단 고지 - 급여대장 대사 로직 (UI와 독립) ==== */
+const Core = (() => {
+  const norm = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  const key = v => norm(v).replace(/\s/g, '');
+  const num = v => {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    const s = String(v).replace(/[,\s원]/g, '');
+    if (s === '' || s === '-') return null;
+    const n = Number(s);
+    return isFinite(n) ? n : null;
+  };
+  const toDate = v => {
+    if (v == null || v === '') return null;
+    if (v instanceof Date) { if (isNaN(v)) return null; const t = new Date(v.getTime() + 432e5); return new Date(t.getFullYear(), t.getMonth(), t.getDate()); }
+    if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5));
+    const s = String(v).trim();
+    const m = s.match(/^(\d{4})[-./]?(\d{1,2})[-./]?(\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    return null;
+  };
+  const fmtD = d => d ? `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` : '';
+
+  function findHeader(rows, test) {
+    for (let i = 0; i < Math.min(rows.length, 20); i++) if (test((rows[i] || []).map(key))) return i;
+    return -1;
+  }
+  const hasAll = must => ks => must.every(m => ks.includes(key(m)));
+  function colIndex(header, names) {
+    const ks = header.map(key);
+    for (const n of names) { const i = ks.indexOf(key(n)); if (i >= 0) return i; }
+    return -1;
+  }
+  // 모든 단어를 포함하는 첫 열 (헤더 표기가 조금씩 달라도 찾도록)
+  function colHas(header, ...words) {
+    const ks = header.map(key);
+    return ks.findIndex(k => words.every(w => k.includes(key(w))));
+  }
+
+  /* ---------- 파서 ---------- */
+  function parsePayroll(rows) {
+    const h = findHeader(rows, hasAll(['사원명']));
+    if (h < 0) throw new Error('급여대장에서 "사원명" 열을 찾지 못했습니다.');
+    const H = rows[h];
+    const c = {
+      code: colIndex(H, ['사원코드', '사번']), name: colIndex(H, ['사원명', '성명']),
+      site: colIndex(H, ['사업장명']), dept: colIndex(H, ['부서', '부서명']),
+      hi: colIndex(H, ['건강보험']), hiAdj: colIndex(H, ['건강보험정산']),
+      lt: colIndex(H, ['장기요양보험료', '요양보험료', '장기요양보험']), ltAdj: colIndex(H, ['장기요양보험정산', '요양보험정산']),
+      np: colIndex(H, ['국민연금']), npAdj: colIndex(H, ['국민연금정산', '국민연금소급']),
+      quit: colIndex(H, ['퇴직일자', '퇴사일자'])
+    };
+    if (c.site < 0) throw new Error('급여대장에서 "사업장명" 열을 찾지 못했습니다.');
+    const out = [];
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const name = norm(r[c.name]);
+      if (!name || /^\d+\s*명$/.test(name) || r.some(x => key(x) === '총계' || key(x) === '합계')) continue;
+      const g = k => c[k] >= 0 ? num(r[c[k]]) : null;
+      out.push({
+        row: i + 1, code: c.code >= 0 ? norm(r[c.code]) : '', name, site: norm(r[c.site]),
+        dept: c.dept >= 0 ? norm(r[c.dept]) : '',
+        hi: g('hi'), hiAdj: g('hiAdj'), lt: g('lt'), ltAdj: g('ltAdj'), np: g('np'), npAdj: g('npAdj'),
+        quit: c.quit >= 0 ? toDate(r[c.quit]) : null
+      });
+    }
+    out.cols = c;
+    return out;
+  }
+
+  function parseRoster(rows) {
+    const h = findHeader(rows, hasAll(['사원명', '사업장명']));
+    if (h < 0) throw new Error('직원명부에서 "사원명"과 "사업장명" 열을 찾지 못했습니다.');
+    const H = rows[h];
+    const c = {
+      site: colIndex(H, ['사업장명']), code: colIndex(H, ['사원코드']), name: colIndex(H, ['사원명', '성명']),
+      dept: colIndex(H, ['부서명']), work: colIndex(H, ['근무지명', '근무지']), status: colIndex(H, ['재직구분명', '재직구분']),
+      join: colIndex(H, ['입사일자', '그룹입사일']), quit: colIndex(H, ['퇴사일자']), jumin: colIndex(H, ['주민등록번호'])
+    };
+    const g = (r, k) => c[k] >= 0 ? r[c[k]] : '';
+    const out = [];
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const name = norm(g(r, 'name'));
+      if (!name) continue;
+      out.push({
+        name, site: norm(g(r, 'site')), code: norm(g(r, 'code')), dept: norm(g(r, 'dept')),
+        work: norm(g(r, 'work')), status: norm(g(r, 'status')), join: toDate(g(r, 'join')),
+        quit: toDate(g(r, 'quit')), jumin: norm(g(r, 'jumin'))
+      });
+    }
+    return out;
+  }
+
+  // 건강보험 공단 고지
+  function parseNoticeHI(rows) {
+    const h = findHeader(rows, hasAll(['성명', '고지금액']));
+    if (h < 0) throw new Error('건강보험 고지파일에서 "성명"과 "고지금액" 열을 찾지 못했습니다.');
+    const H = rows[h].map(norm);
+    const c = {
+      ym: colIndex(H, ['고지년월']), name: colIndex(H, ['성명']), jumin: colIndex(H, ['주민등록번호']),
+      hi: colIndex(H, ['고지금액']), hiAdj: colIndex(H, ['정산금액']),
+      lt: colIndex(H, ['요양고지보험료']), ltAdj: colIndex(H, ['요양정산보험료'])
+    };
+    const miss = ['hiAdj', 'lt', 'ltAdj'].filter(k => c[k] < 0);
+    if (miss.length) throw new Error('고지파일에서 필요한 열을 찾지 못했습니다: ' + miss.map(k => ({ hiAdj: '정산금액', lt: '요양고지보험료', ltAdj: '요양정산보험료' })[k]).join(', '));
+    const out = [];
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const name = norm(r[c.name]);
+      if (!name) continue;
+      out.push({
+        raw: r, name, jumin: c.jumin >= 0 ? norm(r[c.jumin]) : '', ym: c.ym >= 0 ? norm(r[c.ym]).replace(/\D/g, '') : '',
+        v: { hi: num(r[c.hi]) || 0, hiAdj: num(r[c.hiAdj]) || 0, lt: num(r[c.lt]) || 0, ltAdj: num(r[c.ltAdj]) || 0 }, notes: []
+      });
+    }
+    return { header: H, rows: out, nameCol: c.name };
+  }
+
+  // 국민연금 결정내역통보서
+  function parseNoticeNP(rows) {
+    const h = findHeader(rows, ks => ks.includes('성명') && ks.some(k => k.includes('본인기여금')));
+    if (h < 0) throw new Error('국민연금 고지파일에서 "성명"과 "본인기여금" 열을 찾지 못했습니다.');
+    const H = rows[h].map(norm);
+    const c = {
+      ym: colIndex(H, ['고지년월']), name: colIndex(H, ['성명']), jumin: colIndex(H, ['주민등록번호']),
+      base: colHas(H, '기준소득월액'), cur: colHas(H, '당월분', '본인기여금'), retro: colHas(H, '소급분', '본인기여금'),
+      tot: colHas(H, '총부담금계', '본인기여금'), acq: colHas(H, '취득일'), lost: colHas(H, '상실일'),
+      reason: colHas(H, '소급분', '변동사유'), period: colHas(H, '소급분', '해당기간'), change: colIndex(H, ['자격변동신고사항'])
+    };
+    const miss = ['cur', 'tot'].filter(k => c[k] < 0);
+    if (miss.length) throw new Error('국민연금 고지파일에서 필요한 열을 찾지 못했습니다: ' + miss.map(k => ({ cur: '당월분 본인기여금', tot: '총부담금계 본인기여금' })[k]).join(', '));
+    const out = [];
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const name = norm(r[c.name]);
+      if (!name || key(name) === '합계' || key(name) === '계') continue;
+      const g = k => c[k] >= 0 ? num(r[c[k]]) || 0 : 0;
+      const t = k => c[k] >= 0 ? norm(r[c[k]]) : '';
+      const v = { base: g('base'), cur: g('cur'), retro: g('retro'), tot: g('tot') };
+      if (c.tot < 0 || (!v.tot && (v.cur || v.retro))) v.tot = v.cur + v.retro;
+      const notes = [];
+      const acq = toDate(t('acq')), lost = toDate(t('lost'));
+      if (acq) notes.push('취득 ' + fmtD(acq));
+      if (lost) notes.push('상실 ' + fmtD(lost));
+      if (v.retro) { const p = t('period').replace(/^~$/, ''); notes.push('소급' + (t('reason') ? ' ' + t('reason') : '') + (p ? ' ' + p : '')); }
+      const ch = t('change'); if (ch && !/상실/.test(ch)) notes.push(ch);
+      out.push({ raw: r, name, jumin: c.jumin >= 0 ? norm(r[c.jumin]) : '', ym: c.ym >= 0 ? norm(r[c.ym]).replace(/\D/g, '') : '', v, notes });
+    }
+    return { header: H, rows: out, nameCol: c.name };
+  }
+
+  // 이름구분: A열=고지서 성명, B열=급여대장 이름
+  function parseAlias(rows) {
+    const out = [];
+    rows.forEach((r, i) => {
+      const a = norm(r && r[0]), b = norm(r && r[1]);
+      if (!a) return;
+      if (i === 0 && (key(a) === '성명' || /이름/.test(b))) return;
+      out.push([a, b]);
+    });
+    return out;
+  }
+
+  /* ---------- 사업장 표시명 ---------- */
+  function shortSite(site) {
+    const s = site.replace(/\(주\)|주식회사|㈜/g, '').trim();
+    const parts = s.split(/\s+/);
+    return parts.length > 1 ? parts.slice(1).join(' ') : s;
+  }
+  function defaultLabels(roster, sites) {
+    const labels = {};
+    for (const site of sites) {
+      const act = roster.filter(e => e.site === site && e.status !== '퇴직' && e.work);
+      const cnt = {};
+      act.forEach(e => cnt[e.work] = (cnt[e.work] || 0) + 1);
+      const ws = Object.keys(cnt).filter(w => cnt[w] >= Math.max(1, act.length * 0.1)).sort((a, b) => a.localeCompare(b, 'ko'));
+      labels[site] = ws.length ? ws.join('') : (shortSite(site) || site || '미분류');
+    }
+    return labels;
+  }
+
+  /* ---------- 대사 ---------- */
+  const fmtQuit = (d, year) => d ? (d.getFullYear() === year ? `${d.getMonth() + 1}/${d.getDate()}` : `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`) + ' 퇴사' : '';
+
+  function pickRoster(roster, names, jumin, code) {
+    if (code) { const byCode = roster.filter(e => e.code && e.code === code); if (byCode.length) return byCode[0]; }
+    let c = roster.filter(e => names.includes(e.name));
+    if (!c.length) return null;
+    const jp = (jumin || '').replace(/\s/g, '');
+    if (jp.length >= 6 && c.length > 1) {
+      const m = c.filter(e => { const pre = (e.jumin || '').replace(/\s/g, '').replace(/\*.*$/, ''); return pre.length >= 6 && jp.startsWith(pre); });
+      if (m.length) c = m;
+    }
+    c.sort((a, b) => ((a.status === '퇴직') - (b.status === '퇴직')) || ((b.join || 0) - (a.join || 0)));
+    return c[0];
+  }
+
+  // mode: { nKeys, pKeys, diffs:[{key,n,p}] }
+  function reconcile({ mode, pay, roster, notice, alias, labels }) {
+    const { nKeys, pKeys, diffs } = mode;
+    const payByName = new Map();
+    pay.forEach(p => { if (!payByName.has(p.name)) payByName.set(p.name, p); });
+    const aliasMap = new Map();
+    alias.forEach(([a, b]) => { if (b) aliasMap.set(a, b); });
+    const used = new Set();
+    const ym = (notice.rows[0] && notice.rows[0].ym) || '';
+    const year = ym.length >= 4 ? +ym.slice(0, 4) : new Date().getFullYear();
+    const month = ym.length >= 6 ? +ym.slice(4, 6) : null;
+    const pv = p => { const o = {}; pKeys.forEach(k => o[k] = p[k]); return o; };
+
+    const lines = [];
+    const unmatchedNotice = [];
+    for (const n of notice.rows) {
+      let p = payByName.get(n.name) || null, viaAlias = '';
+      if (p && used.has(p)) p = null;
+      if (!p && aliasMap.has(n.name)) {
+        const cand = payByName.get(aliasMap.get(n.name));
+        if (cand && !used.has(cand)) { p = cand; if (cand.name !== n.name) viaAlias = cand.name; }
+      }
+      if (p) used.add(p);
+      const names = [n.name]; if (aliasMap.has(n.name)) names.push(aliasMap.get(n.name)); if (p) names.push(p.name);
+      const emp = pickRoster(roster, names, n.jumin, p && p.code);
+      const site = (emp && emp.site) || (p && p.site) || '';   // 사업장: 직원명부 우선
+      const quit = (p && p.quit) || (emp && emp.quit) || null;
+      const notes = [];
+      if (quit) notes.push(fmtQuit(quit, year));
+      notes.push(...n.notes.filter(x => !(quit && /^상실/.test(x))));
+      if (viaAlias) notes.push('고지서 성명: ' + n.name);
+      if (!p) { notes.push('급여대장 없음'); unmatchedNotice.push({ name: n.name, site }); }
+      if (!site) notes.push('사업장 미확인');
+      lines.push({
+        name: p ? p.name : n.name, noticeName: n.name, payName: p ? p.name : '', site, work: (emp && emp.work) || '',
+        dept: (p && p.dept) || (emp && emp.dept) || '', n: n.v, p: p ? pv(p) : null, notes, src: n
+      });
+    }
+    const unmatchedPay = [];
+    for (const p of pay) {
+      if (used.has(p)) continue;
+      if (!pKeys.some(k => p[k])) continue; // 해당 보험 공제가 없는 사람은 비교 대상 아님
+      unmatchedPay.push(p);
+      const emp = pickRoster(roster, [p.name], '', p.code);
+      const quit = p.quit || (emp && emp.quit) || null;
+      const notes = [];
+      if (quit) notes.push(fmtQuit(quit, year));
+      notes.push('고지서 없음');
+      lines.push({
+        name: p.name, noticeName: '', payName: p.name, site: (emp && emp.site) || p.site, work: (emp && emp.work) || '',
+        dept: p.dept, n: null, p: pv(p), notes, src: null
+      });
+    }
+    lines.forEach(l => {
+      l.diff = {}; diffs.forEach(d => l.diff[d.key] = ((l.n && l.n[d.n]) || 0) - ((l.p && l.p[d.p]) || 0));
+      l.mismatch = diffs.some(d => Math.round(l.diff[d.key]) !== 0);
+    });
+
+    const sites = [...new Set([...pay.map(p => p.site), ...lines.map(l => l.site)])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ko'));
+    if (lines.some(l => !l.site)) sites.push('');
+    const lab = Object.assign(defaultLabels(roster, sites.filter(Boolean)), labels || {});
+    if (sites.includes('')) lab[''] = '미분류';
+    const groups = sites.map(s => {
+      const ls = lines.filter(l => l.site === s);
+      const sum = (o, ks) => { const t = {}; ks.forEach(k => t[k] = ls.reduce((a, l) => a + ((l[o] && l[o][k]) || 0), 0)); return t; };
+      return {
+        site: s, label: lab[s] || s, lines: ls, pay: pay.filter(p => p.site === s),
+        tot: { n: sum('n', nKeys), p: sum('p', pKeys), diff: sum('diff', diffs.map(d => d.key)) }, mismatches: ls.filter(l => l.mismatch).length
+      };
+    }).filter(g => g.lines.length || g.pay.some(p => pKeys.some(k => p[k])));
+    return { groups, lines, unmatchedNotice, unmatchedPay, ym, year, month, labels: lab, noticeHeader: notice.header, noticeNameCol: notice.nameCol };
+  }
+
+  return { parsePayroll, parseRoster, parseNoticeHI, parseNoticeNP, parseAlias, reconcile, defaultLabels, norm, num };
+})();
+
+/* ==== 비고 종류 (종류마다 색을 다르게) ==== */
+const NOTE = {
+  type(n) {
+    if (/퇴사/.test(n)) return 'quit';
+    if (/급여대장 없음/.test(n)) return 'miss';
+    if (/고지서 없음/.test(n)) return 'nopay';
+    if (/^고지서 성명/.test(n)) return 'alias';
+    if (/^취득/.test(n)) return 'acq';
+    if (/상실/.test(n)) return 'lost';
+    if (/^소급/.test(n)) return 'retro';
+    if (/사업장 미확인/.test(n)) return 'site';
+    return 'etc';
+  },
+  label: { quit: '퇴사', miss: '급여대장 없음', nopay: '고지서 없음', alias: '이름구분 적용', acq: '취득', lost: '상실', retro: '소급', site: '사업장 미확인', etc: '기타' },
+  // 엑셀 비고 글자색
+  xl: { quit: 'FF0E7490', miss: 'FFC00000', nopay: 'FFC0187A', alias: 'FF2D7340', acq: 'FF1F4FD8', lost: 'FF7030A0', retro: 'FF8A6D00', site: 'FF595959', etc: 'FF404040' }
+};
+
+/* ==== 메뉴(보험 종류)별 설정 ==== */
+const MODES = {
+  hi: {
+    id: 'hi', title: '건강보험 고지 대사', short: '건강보험', noticeLabel: '건강보험 공단 고지',
+    noticeHint: '성명 · 고지금액 · 정산금액 · 요양고지보험료 …',
+    sub: '공단 고지금액과 급여대장 공제액(건강·건강정산·요양·요양정산)을 사업장별로 비교해 최종 엑셀을 만듭니다.',
+    nKeys: ['hi', 'hiAdj', 'lt', 'ltAdj'], nLabels: ['건강', '건강정산', '요양', '요양정산'],
+    pKeys: ['hi', 'hiAdj', 'lt', 'ltAdj'], pLabels: ['건강', '건강정산', '요양', '요양정산'],
+    payHeads: ['건강보험', '건강보험정산', '장기요양보험료', '장기요양보험정산'],
+    diffs: [{ key: 'hi', n: 'hi', p: 'hi', label: '건강' }, { key: 'hiAdj', n: 'hiAdj', p: 'hiAdj', label: '건강정산' },
+            { key: 'lt', n: 'lt', p: 'lt', label: '요양' }, { key: 'ltAdj', n: 'ltAdj', p: 'ltAdj', label: '요양정산' }],
+    sumN: ['hi', 'lt'], sumP: ['hi', 'lt'], sumNLabel: '고지 건강+요양', sumPLabel: '급여 건강+요양', diffLabel: '차이 (정산 포함)',
+    payNeed: ['hi', 'lt'], payNeedLabel: '건강보험 · 장기요양보험료',
+    parse: rows => Core.parseNoticeHI(rows), fileWord: '건강보험'
+  },
+  np: {
+    id: 'np', title: '국민연금 고지 대사', short: '국민연금', noticeLabel: '국민연금 결정내역 통보서',
+    noticeHint: '성명 · 기준소득월액 · 본인기여금 · 소급분 …',
+    sub: '국민연금 결정내역(본인기여금 당월분 + 소급분)과 급여대장 국민연금 공제액을 사업장별로 비교해 최종 엑셀을 만듭니다.',
+    nKeys: ['base', 'cur', 'retro', 'tot'], nLabels: ['기준소득월액', '당월 본인', '소급 본인', '본인 계'],
+    pKeys: ['np'], pLabels: ['국민연금'], payHeads: ['국민연금'],
+    diffs: [{ key: 'np', n: 'tot', p: 'np', label: '국민연금' }],
+    sumN: ['tot'], sumP: ['np'], sumNLabel: '고지 본인기여금 계', sumPLabel: '급여 국민연금', diffLabel: '차이',
+    payNeed: ['np'], payNeedLabel: '국민연금',
+    parse: rows => Core.parseNoticeNP(rows), fileWord: '국민연금'
+  }
+};
+</script>
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const fmt = v => v == null || v === '' ? '' : Math.round(v).toLocaleString('ko-KR');
+
+/* ---------- 저장소 ---------- */
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+};
+const AKEY = 'hiRecon.alias.v1', LKEY = 'hiRecon.labels.v1', VKEY = 'hiRecon.view.v1';
+const state = {
+  view: 'hi', data: {}, slot: {}, result: {}, site: {}, onlyDiff: {},
+  alias: LS.get(AKEY, { rows: [], updated: null, source: '' }), labels: LS.get(LKEY, {})
+};
+const M = () => MODES[state.view] || MODES.hi;
+const noticeKind = id => 'notice_' + id;
+
+function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2600); }
+function showMsg(sel, cls, text) { $(sel).innerHTML = text ? `<div class="msg ${cls}">${esc(text)}</div>` : ''; }
+
+/* ---------- 파일 읽기 ---------- */
+async function readRowsAll(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  return wb.SheetNames.map(n => ({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true, blankrows: false }) }));
+}
+const PARSERS = {
+  pay: r => Core.parsePayroll(r), roster: r => Core.parseRoster(r),
+  notice_hi: r => MODES.hi.parse(r), notice_np: r => MODES.np.parse(r), alias: r => Core.parseAlias(r)
+};
+function detectKind(sheets) {
+  for (const s of sheets) {
+    const top = s.rows.slice(0, 20).map(r => r.map(c => String(c).replace(/\s/g, '')));
+    const has = w => top.some(r => r.includes(w));
+    const like = w => top.some(r => r.some(c => c.includes(w)));
+    if (has('성명') && like('본인기여금')) return 'notice_np';
+    if (has('고지금액') && has('성명')) return 'notice_hi';
+    if (has('사원명') && (has('건강보험') || has('국민연금'))) return 'pay';
+    if (has('사원명') && (has('재직구분명') || has('근무지명'))) return 'roster';
+    if (has('급여대장이름')) return 'alias';
+  }
+  return null;
+}
+function parseKind(kind, sheets) {
+  let err;
+  for (const s of sheets) {
+    try { const v = PARSERS[kind](s.rows); if (kind.startsWith('notice') ? v.rows.length : v.length) return v; } catch (e) { err = e; }
+  }
+  throw err || new Error('읽을 수 있는 행이 없습니다.');
+}
+const KLABEL = { pay: '급여대장', roster: '직원명부', notice_hi: '건강보험 고지', notice_np: '국민연금 고지', alias: '이름구분' };
+
+async function loadFile(file, forced) {
+  let sheets;
+  try { sheets = await readRowsAll(file); } catch (e) { showMsg('#run-msg', 'err', `${file.name}: 엑셀 파일로 읽지 못했습니다. 파일을 다시 저장한 뒤 올려 주세요.`); return; }
+  let kind = forced || detectKind(sheets);
+  if (!kind) { showMsg('#run-msg', 'err', `${file.name}: 어떤 파일인지 알 수 없습니다. 해당 칸의 "파일 선택"으로 직접 올려 주세요.`); return; }
+  if (kind === 'alias') return importAlias(file, sheets);
+  try {
+    const v = parseKind(kind, sheets);
+    state.data[kind] = v;
+    let st;
+    if (kind.startsWith('notice')) { const ym = v.rows[0] && v.rows[0].ym; st = `${v.rows.length}명` + (ym && ym.length >= 6 ? ` · ${ym.slice(0, 4)}년 ${+ym.slice(4, 6)}월 고지` : ''); }
+    else st = `${v.length}명 인식`;
+    state.slot[kind] = { file: file.name, ok: true, msg: st };
+    if (kind.startsWith('notice') && kind !== noticeKind(state.view)) {
+      toast(`${file.name} → ${KLABEL[kind]}로 인식했습니다 (${MODES[kind.slice(7)].short} 메뉴)`);
+    }
+  } catch (e) {
+    delete state.data[kind];
+    state.slot[kind] = { file: file.name, ok: false, msg: e.message };
+  }
+  renderSlots(); run();
+}
+
+/* ---------- 화면 ---------- */
+function renderSlots() {
+  const m = M();
+  const put = (el, kind, hint) => {
+    const s = state.slot[kind];
+    el.className = 'slot' + (s ? (s.ok ? ' ok' : ' err') : '');
+    const f = el.querySelector('.fname');
+    f.textContent = s ? s.file : hint; f.classList.toggle('muted', !s);
+    el.querySelector('.state').textContent = s ? s.msg : '';
+  };
+  put($('#slot-pay'), 'pay', '사원명 · 사업장명 · ' + m.payNeedLabel + ' …');
+  put($('#slot-roster'), 'roster', '사업장명 · 사원명 · 근무지명 · 재직구분 …');
+  put($('#slot-notice'), noticeKind(m.id), m.noticeHint);
+  $('#notice-lbl').textContent = m.noticeLabel;
+}
+function renderChrome() {
+  const m = M();
+  $('#page-title').textContent = state.view === 'alias' ? '이름구분 관리' : m.title;
+  $('#page-sub').textContent = state.view === 'alias' ? '공단 고지서 성명과 급여대장 이름이 다를 때 쓰는 연결표입니다. 건강보험·국민연금 공통입니다.' : m.sub + ' 파일은 이 브라우저 안에서만 처리됩니다.';
+  document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.view === state.view));
+  $('#view-run').hidden = state.view === 'alias'; $('#view-alias').hidden = state.view !== 'alias';
+  $('#out-list').innerHTML = `
+    <li><b>{사업장}비교</b>고지서 ${m.nLabels.length}항목 · 급여대장 ${m.pLabels.length}항목 · 차이(고지서−급여대장) · 비고</li>
+    <li><b>자료&gt;&gt;</b>구분용 빈 시트</li>
+    <li><b>고지서</b>공단 고지 원본 + 근무지 열</li>
+    <li><b>통지서</b>사업장 · 부서별 급여대장 ${esc(m.short)} 공제 합계</li>
+    <li><b>{월}월 급여({사업장})</b>사업장별 급여대장 ${esc(m.short)} 항목 + 부서별 합계</li>`;
+  $('#only-diff').checked = !!state.onlyDiff[m.id];
+}
+
+/* ---------- 분석 ---------- */
+function run() {
+  const m = M();
+  if (state.view === 'alias') return;
+  const pay = state.data.pay, roster = state.data.roster, notice = state.data[noticeKind(m.id)];
+  if (!(pay && roster && notice)) { $('#results').hidden = true; $('#empty-out').hidden = false; showMsg('#run-msg', '', ''); return; }
+  if (pay.cols && m.payNeed.some(k => pay.cols[k] < 0)) {
+    showMsg('#run-msg', 'err', `급여대장에 "${m.payHeads.filter((h, i) => pay.cols[m.pKeys[i]] < 0).join(', ')}" 열이 없어 ${m.short} 대사를 할 수 없습니다.`);
+    $('#results').hidden = true; return;
+  }
+  try {
+    state.result[m.id] = Core.reconcile({ mode: m, pay, roster, notice, alias: state.alias.rows, labels: state.labels });
+    showMsg('#run-msg', '', '');
+  } catch (e) { console.error(e); showMsg('#run-msg', 'err', '분석 중 오류: ' + e.message); return; }
+  $('#results').hidden = false; $('#empty-out').hidden = true;
+  const R = state.result[m.id];
+  if (!R.groups.some(g => g.site === state.site[m.id])) state.site[m.id] = R.groups[0] && R.groups[0].site;
+  renderResults();
+}
+
+function renderResults() {
+  const m = M(), R = state.result[m.id];
+  const total = R.lines.length, mm = R.lines.filter(l => l.mismatch).length;
+  $('#res-title').textContent = `2. ${R.year}년 ${R.month || ''}월 ${m.short} 고지분 사업장별 요약`;
+  $('#res-sub').textContent = `비교 ${total}명 · 차이 있음 ${mm}명 · 이름구분 연결 ${state.alias.rows.filter(r => r[1]).length}건 적용`;
+  const sum = (o, ks) => ks.reduce((a, k) => a + (o[k] || 0), 0);
+  $('#summary').innerHTML = R.groups.map(g => {
+    const st = g.mismatches ? `<span class="st bad">차이 ${g.mismatches}명</span>` : `<span class="st ok">일치</span>`;
+    return `<div class="site"><div class="t"><b>${esc(g.label)}</b>${st}</div>
+      <span class="hint">${esc(g.site || '사업장 미확인')} · ${g.lines.length}명</span>
+      <dl><dt>${m.sumNLabel}</dt><dd>${fmt(sum(g.tot.n, m.sumN))}</dd>
+      <dt>${m.sumPLabel}</dt><dd>${fmt(sum(g.tot.p, m.sumP))}</dd>
+      <dt>${m.diffLabel}</dt><dd>${fmt(sum(g.tot.diff, m.diffs.map(d => d.key)))}</dd></dl></div>`;
+  }).join('');
+  $('#label-grid').innerHTML = R.groups.filter(g => g.site).map((g, i) =>
+    `<label>${esc(g.site)}<input class="txt" id="lab-${i}" data-site="${esc(g.site)}" value="${esc(g.label)}"></label>`).join('');
+  renderUnmatched(); renderTabs(); renderDetail();
+}
+
+function renderUnmatched() {
+  const m = M(), R = state.result[m.id];
+  const usedPay = new Set(R.lines.filter(l => l.payName && l.noticeName).map(l => l.payName));
+  const all = state.data.pay.map(p => p.name);
+  const free = all.filter(n => !usedPay.has(n));
+  $('#pay-names').innerHTML = [...free, ...all.filter(n => !free.includes(n))].map(n => `<option value="${esc(n)}">`).join('');
+  const items = R.unmatchedNotice, pays = R.unmatchedPay;
+  $('#unmatched-panel').hidden = !items.length && !pays.length;
+  const suggest = name => free.find(n => n.includes('(' + name + ')') || n.replace(/\s/g, '') === name.replace(/\s/g, '')) || '';
+  $('#unmatched').innerHTML = items.map((u, i) => `<div class="unm-item">
+      <div class="who"><b>${esc(u.name)}</b><small>고지서 · ${esc(R.labels[u.site] || '사업장 미확인')}</small></div>
+      <input class="txt" list="pay-names" id="unm-${i}" data-notice="${esc(u.name)}" placeholder="급여대장 이름 선택 또는 입력" value="${esc(suggest(u.name))}">
+      <button class="btn small" data-link="${i}">연결</button></div>`).join('') +
+    (pays.length ? `<p class="hint" style="margin-top:6px">고지서에 없는 급여대장 ${esc(m.short)} 공제자: ${pays.map(p => `<span class="chip warn">${esc(p.name)}</span>`).join(' ')}</p>` : '') +
+    (items.length ? `<p class="hint">퇴사 후 고지된 정산·상실분처럼 급여대장에 원래 없는 경우는 연결하지 않아도 됩니다. 결과 파일 비고에 "급여대장 없음"으로 표시됩니다.</p>` : '');
+}
+
+function renderTabs() {
+  const m = M(), R = state.result[m.id];
+  $('#site-tabs').innerHTML = R.groups.map(g =>
+    `<button role="tab" aria-selected="${g.site === state.site[m.id]}" data-site="${esc(g.site)}">${esc(g.label)} <span class="mono">${g.lines.length}</span></button>`).join('');
+}
+
+function cell(v, cls = '') { return `<td class="n ${cls}">${fmt(v)}</td>`; }
+function renderDetail() {
+  const m = M(), R = state.result[m.id];
+  const g = R.groups.find(x => x.site === state.site[m.id]); if (!g) { $('#detail').innerHTML = ''; return; }
+  const rows = g.lines.filter(l => !state.onlyDiff[m.id] || l.mismatch);
+  const ncols = m.nKeys.length + m.pKeys.length + m.diffs.length;
+  const dcell = (v, first) => { const r = Math.round(v); return `<td class="n ${first ? 'bl ' : ''}${r > 0 ? 'd-pos' : r < 0 ? 'd-neg' : 'zero'}">${r ? fmt(r) : '0'}</td>`; };
+  const grpTh = (t, n) => `<th class="grp" colspan="${n}">${t}</th>`;
+  const subTh = labels => labels.map((t, i) => `<th class="n${i === 0 ? ' grp' : ''}" style="text-align:right">${t}</th>`).join('');
+  const head = `<thead><tr><th></th><th></th>${grpTh('고지서', m.nKeys.length)}${grpTh('급여대장', m.pKeys.length)}${grpTh('고지서 − 급여대장', m.diffs.length)}<th></th></tr>
+    <tr><th>성명</th><th>근무지</th>${subTh(m.nLabels)}${subTh(m.pLabels)}${subTh(m.diffs.map(d => d.label))}<th>비고</th></tr></thead>`;
+  const body = rows.map(l => `<tr><td class="nmc" title="${esc(l.name)}"><span class="nm">${esc(l.name)}</span></td><td class="muted">${esc(l.work || g.label)}</td>
+    ${m.nKeys.map((k, i) => cell(l.n ? l.n[k] : null, i === 0 ? 'bl' : '')).join('')}
+    ${m.pKeys.map((k, i) => cell(l.p ? l.p[k] : null, i === 0 ? 'bl' : '')).join('')}
+    ${m.diffs.map((d, i) => dcell(l.diff[d.key], i === 0)).join('')}
+    <td class="note" title="${esc(l.notes.join(', '))}">${l.notes.map(n => `<span class="chip n-${NOTE.type(n)}">${esc(n)}</span>`).join('')}</td></tr>`).join('');
+  const t = g.tot;
+  const foot = `<tr class="tot"><td>합계</td><td></td>${m.nKeys.map((k, i) => cell(t.n[k], i === 0 ? 'bl' : '')).join('')}${m.pKeys.map((k, i) => cell(t.p[k], i === 0 ? 'bl' : '')).join('')}${m.diffs.map((d, i) => cell(t.diff[d.key], i === 0 ? 'bl' : '')).join('')}<td></td></tr>`;
+  const cols = `<colgroup><col class="c-name"><col class="c-work">${'<col>'.repeat(ncols)}<col class="c-note"></colgroup>`;
+  $('#detail').style.minWidth = (112 + 52 + 230 + ncols * 68) + 'px';
+  const seen = [...new Set(R.lines.flatMap(l => l.notes.map(n => NOTE.type(n))))];
+  $('#note-legend').innerHTML = seen.length ? '비고 색 구분: ' + Object.keys(NOTE.label).filter(t => seen.includes(t)).map(t => `<span class="chip n-${t}">${NOTE.label[t]}</span>`).join('') : '';
+  $('#detail').innerHTML = cols + head + '<tbody>' + (body || `<tr><td colspan="${ncols + 3}" class="muted">차이 있는 행이 없습니다.</td></tr>`) + foot + '</tbody>';
+  fitNames();
+}
+// 이름이 열 너비를 넘으면 글자 크기를 줄여 한 줄에 맞춤 (최소 8px)
+function fitNames() {
+  document.querySelectorAll('#detail .nm').forEach(el => {
+    el.style.fontSize = '';
+    const avail = el.clientWidth; if (!avail || el.scrollWidth <= avail) return;
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    size = Math.max(8, Math.floor(size * avail / el.scrollWidth * 10) / 10);
+    el.style.fontSize = size + 'px';
+    while (el.scrollWidth > avail && size > 8) { size -= 0.5; el.style.fontSize = size + 'px'; }
+  });
+}
+window.addEventListener('resize', () => { clearTimeout(fitNames.t); fitNames.t = setTimeout(fitNames, 120); });
+
+/* ---------- 이벤트: 대사 ---------- */
+document.querySelectorAll('#drop input[type=file]').forEach(inp => inp.addEventListener('change', e => {
+  const f = e.target.files[0]; const k = e.target.dataset.kind;
+  if (f) loadFile(f, k === 'notice' ? noticeKind(M().id) : k); e.target.value = '';
+}));
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', async e => { for (const f of e.dataTransfer.files) await loadFile(f); });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  if (drop.contains(e.target)) return; e.preventDefault();
+  [...e.dataTransfer.files].reduce((p, f) => p.then(() => state.view === 'alias' ? importAlias(f) : loadFile(f)), Promise.resolve());
+});
+
+$('#site-tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.site[M().id] = b.dataset.site; renderTabs(); renderDetail(); });
+$('#only-diff').addEventListener('change', e => { state.onlyDiff[M().id] = e.target.checked; renderDetail(); });
+$('#label-grid').addEventListener('change', e => {
+  const i = e.target.closest('input'); if (!i) return;
+  const v = i.value.trim(); if (v) state.labels[i.dataset.site] = v; else delete state.labels[i.dataset.site];
+  LS.set(LKEY, state.labels); run(); toast('사업장 표시명을 바꿨습니다');
+});
+$('#unmatched').addEventListener('click', e => {
+  const b = e.target.closest('[data-link]'); if (!b) return;
+  const inp = $('#unm-' + b.dataset.link); const a = inp.dataset.notice, v = inp.value.trim();
+  if (!v) { inp.focus(); return; }
+  if (!state.data.pay.some(p => p.name === v)) { toast(`급여대장에 "${v}" 이름이 없습니다`); return; }
+  setAlias(a, v); run(); toast(`${a} → ${v} 연결, 다시 분석했습니다`);
+});
+
+/* ---------- 이름구분 ---------- */
+function saveAlias(source) {
+  state.alias.updated = new Date().toISOString(); if (source) state.alias.source = source;
+  const ok = LS.set(AKEY, state.alias); renderAliasMeta();
+  if (!ok) showMsg('#alias-msg', 'err', '이 브라우저에 저장하지 못했습니다(개인정보 보호 모드 등). 지금 창을 닫으면 변경 내용이 사라지니 엑셀로 내려받아 두세요.');
+}
+function setAlias(a, b) {
+  const r = state.alias.rows.find(x => x[0] === a);
+  if (r) r[1] = b; else state.alias.rows.push([a, b]);
+  saveAlias(); renderAlias();
+}
+function renderAliasMeta() {
+  const n = state.alias.rows.filter(r => r[1]).length;
+  $('#alias-count').textContent = n;
+  const u = state.alias.updated ? new Date(state.alias.updated) : null;
+  $('#alias-stamp').textContent = u ? `전체 ${state.alias.rows.length}행 · 연결 ${n}건 · ${u.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })} 저장${state.alias.source ? ' · ' + state.alias.source : ''}` : '아직 저장된 이름구분이 없습니다';
+}
+function renderAlias() {
+  renderAliasMeta();
+  const only = $('#alias-only').checked, q = $('#alias-q').value.trim();
+  const rows = state.alias.rows.map((r, i) => ({ r, i })).filter(({ r }) => (!only || r[1] || (!r[0] && !r[1])) && (!q || r[0].includes(q) || r[1].includes(q)));
+  $('#alias-table').innerHTML = `<thead><tr><th>#</th><th>A · 고지서 성명</th><th>B · 급여대장 이름</th><th></th></tr></thead><tbody>` +
+    (rows.length ? rows.map(({ r, i }) => `<tr class="${r[1] ? 'on' : ''}"><td class="idx">${i + 1}</td>
+      <td><input class="txt" id="al-a-${i}" data-i="${i}" data-c="0" value="${esc(r[0])}"></td>
+      <td><input class="txt" id="al-b-${i}" data-i="${i}" data-c="1" list="pay-names" value="${esc(r[1])}" placeholder="같은 이름이면 비워 둠"></td>
+      <td><button class="btn small" data-del="${i}" aria-label="${esc(r[0])} 행 삭제">삭제</button></td></tr>`).join('')
+      : `<tr><td colspan="4" class="muted" style="padding:16px">${state.alias.rows.length ? '조건에 맞는 행이 없습니다.' : '이름구분 파일(A열 고지서 성명, B열 급여대장 이름)을 올리거나 "+ 행 추가"로 직접 입력하세요.'}</td></tr>`) + '</tbody>';
+}
+async function importAlias(file, sheets) {
+  try {
+    sheets = sheets || await readRowsAll(file);
+    const rows = parseKind('alias', sheets);
+    state.alias.rows = rows; saveAlias(file.name); renderAlias();
+    showMsg('#alias-msg', 'info', `${file.name}에서 ${rows.length}행을 불러왔습니다 (연결 ${rows.filter(r => r[1]).length}건). 기존 이름구분을 이 파일 내용으로 교체했습니다.`);
+    toast('이름구분을 업데이트했습니다');
+    state.result = {}; run();
+  } catch (e) { showMsg('#alias-msg', 'err', `${file.name}: ${e.message}`); }
+}
+$('#f-alias').addEventListener('change', e => { const f = e.target.files[0]; if (f) importAlias(f); e.target.value = ''; });
+$('#alias-only').addEventListener('change', renderAlias);
+$('#alias-q').addEventListener('input', renderAlias);
+$('#btn-alias-add').addEventListener('click', () => { state.alias.rows.push(['', '']); saveAlias(); renderAlias(); const i = state.alias.rows.length - 1; const el = $('#al-a-' + i); if (el) el.focus(); });
+$('#alias-table').addEventListener('change', e => {
+  const i = e.target.dataset.i; if (i == null) return;
+  state.alias.rows[+i][+e.target.dataset.c] = e.target.value.trim(); saveAlias();
+  e.target.closest('tr').className = state.alias.rows[+i][1] ? 'on' : '';
+});
+$('#alias-table').addEventListener('click', e => {
+  const b = e.target.closest('[data-del]'); if (!b) return;
+  state.alias.rows.splice(+b.dataset.del, 1); saveAlias(); renderAlias();
+});
+
+/* ---------- 메뉴 ---------- */
+function setView(v) {
+  state.view = v; try { localStorage.setItem(VKEY, v); } catch (e) {}
+  renderChrome();
+  if (v === 'alias') { renderAlias(); return; }
+  renderSlots(); run();
+}
+document.querySelector('nav.tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setView(b.dataset.view); });
+
+/* ---------- 내려받기 ---------- */
+let dlCap = null;
+if (window.claude && window.claude.use) window.claude.use('downloads').then(d => dlCap = d).catch(() => {});
+async function saveFile(filename, buf) {
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  if (dlCap) {
+    try { await dlCap.save({ filename, data: blob }); toast('저장했습니다'); return; }
+    catch (e) { if (e && e.code === 'declined') return; if (e && e.code === 'rate_limited') { toast('저장 창이 이미 열려 있습니다'); return; } }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+$('#btn-download').addEventListener('click', async e => {
+  const b = e.currentTarget; b.disabled = true; const t = b.textContent; b.textContent = '만드는 중…';
+  try {
+    const m = M(), R = state.result[m.id];
+    const buf = await Out.build(m, R);
+    await saveFile(`${R.year}년 ${R.month || ''}월 ${m.fileWord} 고지-급여대장 비교.xlsx`, buf);
+  } catch (err) { console.error(err); toast('파일을 만들지 못했습니다: ' + err.message); }
+  finally { b.disabled = false; b.textContent = t; }
+});
+$('#btn-alias-dl').addEventListener('click', async () => {
+  const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Sheet1');
+  ws.addRow(['성명', '급여대장이름']); state.alias.rows.forEach(r => ws.addRow(r));
+  ws.getRow(1).font = { bold: true }; ws.columns = [{ width: 18 }, { width: 32 }];
+  await saveFile('이름구분.xlsx', await wb.xlsx.writeBuffer());
+});
+
+/* ---------- 엑셀 생성 (목적파일 양식) ---------- */
+const Out = (() => {
+  const FONT = '맑은 고딕';
+  const NUM = '#,##0;-#,##0;0', DIFF = '#,##0;[Red]-#,##0;0';
+  const thin = { style: 'thin', color: { argb: 'FFBFBFBF' } };
+  const BORDER = { top: thin, left: thin, bottom: thin, right: thin };
+  const fill = c => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: c } });
+  const HEAD = fill('FFDDEBF7'), HEAD2 = fill('FFFCE4D6'), HEAD3 = fill('FFE2EFDA'), TOT = fill('FFF2F2F2'), HL = fill('FFFFF2CC');
+  const L = n => { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }; // 1-based
+  const safe = (s, used) => { let b = s.replace(/[\[\]:*?\/\\]/g, '').slice(0, 31) || 'Sheet'; let n = b, i = 2; while (used.has(n)) n = b.slice(0, 28) + '(' + i++ + ')'; used.add(n); return n; };
+  const style = (c, o = {}) => { c.font = { name: FONT, size: 10, bold: !!o.bold, color: o.color }; c.border = BORDER; if (o.fill) c.fill = o.fill; if (o.num) c.numFmt = o.num; c.alignment = { vertical: 'middle', horizontal: o.align || (o.num ? 'right' : 'left') }; };
+  const v = x => x == null ? null : x;
+
+  function compareSheet(wb, name, g, m) {
+    const nN = m.nKeys.length, nP = m.pKeys.length, nD = m.diffs.length;
+    const cN = 3, cP = cN + nN, cD = cP + nP, cNote = cD + nD;   // 1-based 시작 열
+    const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }] });
+    ws.columns = [{ width: 22 }, { width: 14 }, ...Array(nN + nP + nD).fill({ width: 12 }), { width: 34 }];
+    const grp = (c0, n, t) => { if (n > 1) ws.mergeCells(1, c0, 1, c0 + n - 1); ws.getCell(1, c0).value = t; };
+    grp(cN, nN, '고지서'); grp(cP, nP, '급여대장'); grp(cD, nD, '고지서-급여대장 차이');
+    ['성명', '근무지', ...m.nLabels, ...m.pLabels, ...m.diffs.map(d => d.label), '비고'].forEach((t, i) => { ws.getCell(2, i + 1).value = t; });
+    for (let c = 1; c <= cNote; c++) {
+      const f = c >= cD && c < cNote ? HEAD3 : c >= cP && c < cD ? HEAD2 : HEAD;
+      [1, 2].forEach(r => style(ws.getCell(r, c), { bold: true, fill: f, align: 'center' }));
+    }
+    const numFmt = c => c >= cN && c < cNote ? (c >= cD ? DIFF : NUM) : null;
+    let r = 3;
+    for (const l of g.lines) {
+      const row = ws.getRow(r);
+      row.getCell(1).value = l.name; row.getCell(2).value = l.work || g.label || '미확인';
+      m.nKeys.forEach((k, i) => row.getCell(cN + i).value = l.n ? l.n[k] : null);
+      m.pKeys.forEach((k, i) => row.getCell(cP + i).value = l.p ? v(l.p[k]) : null);
+      m.diffs.forEach((d, i) => {
+        const a = L(cN + m.nKeys.indexOf(d.n)), b = L(cP + m.pKeys.indexOf(d.p));
+        row.getCell(cD + i).value = { formula: `N(${a}${r})-N(${b}${r})`, result: Math.round(l.diff[d.key]) };
+      });
+      row.getCell(cNote).value = l.notes.length ? { richText: l.notes.flatMap((n, i) => [...(i ? [{ text: ', ', font: { name: FONT, size: 10, color: { argb: 'FF808080' } } }] : []), { text: n, font: { name: FONT, size: 10, bold: true, color: { argb: NOTE.xl[NOTE.type(n)] } } }]) } : null;
+      for (let c = 1; c <= cNote; c++) style(row.getCell(c), { num: numFmt(c), fill: c >= cD && c < cNote && Math.round(l.diff[m.diffs[c - cD].key]) !== 0 ? HL : null });
+      r++;
+    }
+    const tr = ws.getRow(r); tr.getCell(1).value = '합계';
+    const totOf = c => c < cP ? g.tot.n[m.nKeys[c - cN]] : c < cD ? g.tot.p[m.pKeys[c - cP]] : g.tot.diff[m.diffs[c - cD].key];
+    for (let c = cN; c < cNote; c++) tr.getCell(c).value = { formula: `SUM(${L(c)}3:${L(c)}${Math.max(3, r - 1)})`, result: totOf(c) };
+    for (let c = 1; c <= cNote; c++) style(tr.getCell(c), { bold: true, fill: TOT, num: numFmt(c) });
+    if (r > 3) ws.autoFilter = { from: 'A2', to: `${L(cNote)}${r - 1}` };
+  }
+
+  function noticeSheet(wb, R) {
+    const ws = wb.addWorksheet('고지서', { views: [{ state: 'frozen', ySplit: 1 }] });
+    const H = R.noticeHeader.slice(); const nc = R.noticeNameCol;
+    const header = [...H.slice(0, nc + 1), '근무지', ...H.slice(nc + 1)];
+    ws.addRow(header);
+    R.lines.filter(l => l.src).forEach(l => {
+      const raw = l.src.raw.slice(0, H.length); while (raw.length < H.length) raw.push('');
+      ws.addRow([...raw.slice(0, nc + 1), l.work || R.labels[l.site] || '', ...raw.slice(nc + 1)].map(x => x === '' ? null : x));
+    });
+    ws.getRow(1).eachCell(c => style(c, { bold: true, fill: HEAD, align: 'center' }));
+    ws.getRow(1).height = 30; ws.getRow(1).eachCell(c => c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true });
+    ws.eachRow((row, i) => { if (i > 1) row.eachCell({ includeEmpty: false }, c => { c.font = { name: FONT, size: 10 }; if (typeof c.value === 'number') c.numFmt = '#,##0'; }); });
+    header.forEach((h, i) => { ws.getColumn(i + 1).width = Math.min(18, Math.max(8, String(h || '').length * 1.3 + 2)); });
+  }
+
+  function deptSums(pays, keys) {
+    const mp = new Map();
+    pays.forEach(p => { const d = p.dept || '(부서 없음)'; if (!mp.has(d)) { const o = {}; keys.forEach(k => o[k] = 0); mp.set(d, o); } const t = mp.get(d); keys.forEach(k => t[k] += p[k] || 0); });
+    return mp;
+  }
+
+  function tongjiSheet(wb, R, m) {
+    const ws = wb.addWorksheet('통지서');
+    const K = m.pKeys;
+    ws.columns = [{ width: 16 }, { width: 18 }, ...K.map(() => ({ width: 20 }))];
+    ws.getCell('C1').value = '데이터'; style(ws.getCell('C1'), { bold: true, fill: HEAD });
+    ws.addRow(['사업장', '부서명', ...m.payHeads.map(h => '합계 : ' + h)]).eachCell(c => style(c, { bold: true, fill: HEAD, align: 'center' }));
+    const grand = {}; K.forEach(k => grand[k] = 0);
+    R.groups.forEach(g => {
+      const mp = deptSums(g.pay, K); if (!mp.size) return;
+      const sub = {}; K.forEach(k => sub[k] = 0);
+      mp.forEach((t, d) => { const row = ws.addRow([g.label, d, ...K.map(k => t[k])]); K.forEach(k => { sub[k] += t[k]; grand[k] += t[k]; }); row.eachCell({ includeEmpty: true }, (c, i) => style(c, { num: i >= 3 ? NUM : null })); });
+      ws.addRow([g.label + ' 요약', '', ...K.map(k => sub[k])]).eachCell({ includeEmpty: true }, (c, i) => style(c, { bold: true, fill: TOT, num: i >= 3 ? NUM : null }));
+    });
+    ws.addRow(['총합계', '', ...K.map(k => grand[k])]).eachCell({ includeEmpty: true }, (c, i) => style(c, { bold: true, fill: HEAD, num: i >= 3 ? NUM : null }));
+  }
+
+  function paySheet(wb, name, g, m) {
+    const K = m.pKeys, nK = K.length;
+    const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
+    const cSite = 3 + nK, cPiv = cSite + 2;   // 1-based
+    ws.columns = [{ width: 24 }, { width: 16 }, ...K.map(() => ({ width: 15 })), { width: 18 }, { width: 3 }, { width: 18 }, ...K.map(() => ({ width: 20 }))];
+    ['사원명', '부서명', ...m.payHeads, '사업장명'].forEach((t, i) => style(Object.assign(ws.getCell(1, i + 1), { value: t }), { bold: true, fill: HEAD, align: 'center' }));
+    let r = 2;
+    g.pay.forEach(p => {
+      [p.name, p.dept || null, ...K.map(k => v(p[k])), p.site].forEach((x, i) => style(Object.assign(ws.getCell(r, i + 1), { value: x }), { num: i >= 2 && i < 2 + nK ? NUM : null }));
+      r++;
+    });
+    const last = Math.max(2, r - 1);
+    style(Object.assign(ws.getCell(r, 1), { value: '합계' }), { bold: true, fill: TOT }); style(ws.getCell(r, 2), { fill: TOT }); style(ws.getCell(r, cSite), { fill: TOT });
+    K.forEach((k, i) => style(Object.assign(ws.getCell(r, 3 + i), { value: { formula: `SUM(${L(3 + i)}2:${L(3 + i)}${last})`, result: g.pay.reduce((a, p) => a + (p[k] || 0), 0) } }), { bold: true, fill: TOT, num: NUM }));
+    // 부서별 합계
+    style(Object.assign(ws.getCell(1, cPiv + 1), { value: '데이터' }), { bold: true, fill: HEAD });
+    ['부서명', ...m.payHeads.map(h => '합계 : ' + h)].forEach((t, i) => style(Object.assign(ws.getCell(2, cPiv + i), { value: t }), { bold: true, fill: HEAD, align: 'center' }));
+    let pr = 3;
+    deptSums(g.pay, K).forEach((t, d) => {
+      style(Object.assign(ws.getCell(pr, cPiv), { value: d }), {});
+      K.forEach((k, i) => style(Object.assign(ws.getCell(pr, cPiv + 1 + i), { value: { formula: `SUMIF($B$2:$B$${last},$${L(cPiv)}${pr},${L(3 + i)}$2:${L(3 + i)}$${last})`, result: t[k] } }), { num: NUM }));
+      pr++;
+    });
+    style(Object.assign(ws.getCell(pr, cPiv), { value: '총합계' }), { bold: true, fill: TOT });
+    K.forEach((k, i) => { const c = L(cPiv + 1 + i); style(Object.assign(ws.getCell(pr, cPiv + 1 + i), { value: { formula: `SUM(${c}3:${c}${Math.max(3, pr - 1)})`, result: g.pay.reduce((a, p) => a + (p[k] || 0), 0) } }), { bold: true, fill: TOT, num: NUM }); });
+  }
+
+  async function build(m, R) {
+    const wb = new ExcelJS.Workbook(); wb.creator = m.title; wb.created = new Date();
+    const used = new Set(['고지서', '통지서']);
+    R.groups.forEach(g => compareSheet(wb, safe(g.label + '비교', used), g, m));
+    wb.addWorksheet(safe('자료>>', used));
+    noticeSheet(wb, R);
+    tongjiSheet(wb, R, m);
+    R.groups.filter(g => g.pay.length).forEach(g => paySheet(wb, safe(`${R.month || ''}월 급여(${g.label})`, used), g, m));
+    return wb.xlsx.writeBuffer();
+  }
+  return { build };
+})();
+window.__recon = { state, run, Out, Core, MODES };
+
+let v0 = 'hi'; try { v0 = localStorage.getItem(VKEY) || 'hi'; } catch (e) {}
+renderAliasMeta();
+setView(MODES[v0] || v0 === 'alias' ? v0 : 'hi');
+})();
+</script>
+
+</body></html>
