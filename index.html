@@ -1114,20 +1114,32 @@ const Out = (() => {
       r++;
     });
     const top1 = 4, topN = Math.max(4, r - 1), sumR = r;
-    if (rows.length) ws.autoFilter = { from: 'A3', to: `H${topN}` };   // 사업장·성명 등으로 정렬/필터
+    if (rows.length) ws.autoFilter = { from: 'A3', to: `J${topN}` };   // 사업장·성명 등으로 정렬/필터
     const sums = [S.rows.reduce((a, x) => a + x.n.hiAdj, 0), S.rows.reduce((a, x) => a + x.n.ltAdj, 0),
       S.rows.reduce((a, x) => a + (x.prev ? x.prev.hiAdj : 0), 0), S.rows.reduce((a, x) => a + (x.prev ? x.prev.ltAdj : 0), 0)];
     style(Object.assign(ws.getCell(sumR, 1), { value: '합계' }), { bold: true, fill: TOT }); [2, 3, 8].forEach(c => style(ws.getCell(sumR, c), { fill: TOT }));
     ['D', 'E', 'F', 'G'].forEach((L, i) => style(Object.assign(ws.getCell(`${L}${sumR}`), { value: { formula: S.rows.length ? `SUM(${L}${top1}:${L}${topN})` : '0', result: sums[i] } }), { bold: true, fill: TOT, num: NUM }));
+    // 비고: H~J 세 칸 병합 (머리글~합계 행 모두 같은 크기로 병합해서 정렬도 가능)
+    for (let rr0 = 3; rr0 <= sumR; rr0++) {
+      const base = ws.getCell(rr0, 8);
+      [9, 10].forEach(c => { const cc = ws.getCell(rr0, c); cc.border = base.border; if (base.fill) cc.fill = base.fill; });
+      ws.mergeCells(rr0, 8, rr0, 10);
+      ws.getCell(rr0, 8).alignment = { vertical: 'middle', horizontal: rr0 === 3 ? 'center' : 'left' };
+    }
     // ── 아래 표: 사업장별 고지서·급여대장·차이 + 전월 선정산 ──
     const h1 = sumR + 2, h2 = h1 + 1;
-    ws.mergeCells(h1, 2, h1, 5); ws.mergeCells(h1, 6, h1, 9); ws.mergeCells(h1, 10, h1, 13); ws.mergeCells(h1, 14, h2, 14);
-    ws.getCell(h1, 2).value = '고지서'; ws.getCell(h1, 6).value = '급여대장'; ws.getCell(h1, 10).value = '고지서-급여대장 차이';
-    ws.getCell(h1, 14).value = '차이 합계'; ws.getCell(h1, 15).value = '전월';
-    const sub = ['사업장', '건강', '건강정산', '요양', '요양정산', '건강', '건강정산', '요양', '요양정산', '건강', '건강정산', '요양', '요양정산', null, '선정산', '차이'];
-    sub.forEach((t, i) => { if (t != null) ws.getCell(h2, i + 1).value = t; });
-    for (let c = 1; c <= 16; c++) [h1, h2].forEach(rr => style(ws.getCell(rr, c), {
-      bold: true, align: 'center', fill: c === 10 || c === 12 || c === 14 ? YEL : c >= 6 && c <= 9 ? HEAD2 : c >= 10 && c <= 13 ? HEAD3 : HEAD }));
+    const PALE = fill('FFFFF2CC');   // 전월 '차이' 열 강조색
+    // 머리글: 사업장·차이 합계는 두 줄 병합, 나머지는 그룹 제목(1행) + 항목(2행)
+    ws.mergeCells(h1, 1, h2, 1); ws.mergeCells(h1, 2, h1, 5); ws.mergeCells(h1, 6, h1, 9); ws.mergeCells(h1, 10, h1, 13);
+    ws.mergeCells(h1, 14, h2, 14); ws.mergeCells(h1, 15, h1, 16);
+    ws.getCell(h1, 1).value = '사업장'; ws.getCell(h1, 2).value = '고지서'; ws.getCell(h1, 6).value = '급여대장';
+    ws.getCell(h1, 10).value = '고지서-급여대장 차이'; ws.getCell(h1, 14).value = '차이 합계'; ws.getCell(h1, 15).value = '전월';
+    ['건강', '건강정산', '요양', '요양정산', '건강', '건강정산', '요양', '요양정산', '건강', '건강정산', '요양', '요양정산']
+      .forEach((t, i) => { ws.getCell(h2, 2 + i).value = t; });
+    ws.getCell(h2, 15).value = '선정산'; ws.getCell(h2, 16).value = '차이';
+    const headFill = (c, row2) => c === 1 || (c >= 2 && c <= 5) ? HEAD : c <= 9 ? HEAD2
+      : c <= 13 ? (row2 && (c === 10 || c === 12) ? YEL : HEAD3) : c === 14 ? YEL : c === 16 && row2 ? PALE : null;
+    for (let c = 1; c <= 16; c++) [h1, h2].forEach(r0 => style(ws.getCell(r0, c), { bold: true, align: 'center', fill: headFill(c, r0 === h2) }));
     const K4 = ['hi', 'hiAdj', 'lt', 'ltAdj'];
     let rr = h2 + 1; const first = rr;
     S.sites.forEach(sg => {
@@ -1140,9 +1152,9 @@ const Out = (() => {
       });
       row.getCell(14).value = { formula: `SUM(J${rr},L${rr})`, result: sg.N };
       // 전월 선정산: 위 표에서 사업장이 같은 행의 전월 건강·요양 정산 합계 (위 표를 정렬해도 맞게 SUMIF 사용)
-      row.getCell(15).value = sg.rows.length ? { formula: `SUMIF($A$${top1}:$A$${topN},A${rr},$F$${top1}:$F$${topN})+SUMIF($A$${top1}:$A$${topN},A${rr},$G$${top1}:$G$${topN})`, result: sg.O } : null;
+      row.getCell(15).value = sg.rows.length ? { formula: `SUMIF($A$${top1}:$A$${topN},A${rr},$F$${top1}:$F$${topN})+SUMIF($A$${top1}:$A$${topN},A${rr},$G$${top1}:$G$${topN})`, result: sg.O } : 0;
       row.getCell(16).value = { formula: `N${rr}-N(O${rr})`, result: sg.P };
-      for (let c = 1; c <= 16; c++) style(row.getCell(c), { num: c >= 2 ? (c >= 10 ? DIFF : NUM) : null, fill: c === 16 && Math.round(sg.P) !== 0 ? HL : null, bold: c === 16 });
+      for (let c = 1; c <= 16; c++) style(row.getCell(c), { num: c >= 2 ? (c >= 10 ? DIFF : NUM) : null, fill: c === 16 ? PALE : null, bold: c === 16 });
       rr++;
     });
     const tr = ws.getRow(rr); tr.getCell(1).value = `${mo}월 고지`;
@@ -1151,6 +1163,15 @@ const Out = (() => {
       return S.sites.reduce((a, s) => a + (c === 14 ? s.N : c === 15 ? s.O : s.P), 0); };
     for (let c = 2; c <= 16; c++) tr.getCell(c).value = { formula: `SUM(${L(c)}${first}:${L(c)}${Math.max(first, rr - 1)})`, result: colTot(c) };
     for (let c = 1; c <= 16; c++) style(tr.getCell(c), { bold: true, fill: TOT, num: c >= 2 ? (c >= 10 ? DIFF : NUM) : null });
+    // 전월(선정산·차이) 블록을 굵은 테두리로 감싸기
+    const MED = { style: 'medium', color: { argb: 'FF000000' } };
+    for (let r0 = h1; r0 <= rr; r0++) for (const c of [15, 16]) {
+      const cell = ws.getCell(r0, c), bd = Object.assign({}, cell.border || BORDER);
+      if (c === 15) bd.left = MED; if (c === 16) bd.right = MED;
+      if (r0 === h1) bd.top = MED; if (r0 === rr) bd.bottom = MED;
+      cell.border = bd;
+    }
+    ws.getRow(h1).height = 20; ws.getRow(h2).height = 20;
     const nt = ws.getRow(rr + 2).getCell(1);
     nt.value = `※ 위 표: ${mo}월 고지서에 건강·요양 정산이 있지만 ${mo}월 급여대장에서 정산하지 않은 인원(전월 퇴사자 등) → ${pm}월 급여대장에서 미리 공제한 정산액과 비교 · 아래 표 "차이" = 차이 합계(건강+요양) − 전월 선정산`;
     nt.font = { name: FONT, size: 9, color: { argb: 'FF666666' } };
