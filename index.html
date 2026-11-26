@@ -48,6 +48,15 @@ section.panel{background:var(--surface);border:1px solid var(--line);border-radi
 .slot .state{font-size:12px}
 .slot.ok .state{color:var(--ok)} .slot.err .state{color:var(--bad)}
 .slot label.pick{align-self:flex-start}
+/* 전월 급여대장 칸: 주황 톤으로 구분 */
+:root{--prev-bg:#fff4e8;--prev-line:#f3c99a;--prev-ink:#a14b05}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--prev-bg:#2e2113;--prev-line:#6b4a24;--prev-ink:#f4b36d}}
+:root[data-theme="dark"]{--prev-bg:#2e2113;--prev-line:#6b4a24;--prev-ink:#f4b36d}
+#slot-prev{background:var(--prev-bg);border:1px dashed var(--prev-line)}
+#slot-prev .lbl{color:var(--prev-ink)}
+#slot-prev .lbl .chip{background:transparent;border-color:var(--prev-line);color:var(--prev-ink)}
+#slot-prev.ok{border-style:solid;border-color:color-mix(in srgb,var(--ok) 45%,var(--prev-line))}
+#slot-prev.err{border-style:solid;border-color:var(--bad)}
 .hint{font-size:12.5px;color:var(--muted)}
 .btn{font:inherit;font-weight:500;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);padding:7px 13px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .btn:hover{border-color:var(--accent)}
@@ -180,16 +189,23 @@ td.zero{color:var(--line-strong)}
         </details>
       </section>
 
+      <section class="panel" id="settle-panel" hidden>
+        <div class="panel-head">
+          <div><h2>3. 정산분 확인</h2><p class="hint" id="settle-sub"></p></div>
+        </div>
+        <div class="scroll" id="settle-wrap"><table id="settle"></table></div>
+      </section>
+
       <section class="panel" id="unmatched-panel">
         <div class="panel-head">
-          <div><h2>3. 이름 확인 필요</h2><p class="hint">고지서 성명을 급여대장에서 찾지 못했습니다. 이름이 다르게 등록된 경우 급여대장 이름을 골라 연결하면 이름구분에 저장되고 바로 다시 분석됩니다.</p></div>
+          <div><h2>4. 이름 확인 필요</h2><p class="hint">고지서 성명을 급여대장에서 찾지 못했습니다. 이름이 다르게 등록된 경우 급여대장 이름을 골라 연결하면 이름구분에 저장되고 바로 다시 분석됩니다.</p></div>
         </div>
         <div class="unm" id="unmatched"></div>
       </section>
 
       <section class="panel">
         <div class="panel-head">
-          <h2>4. 상세 비교</h2>
+          <h2>5. 상세 비교</h2>
           <label class="toggle"><input type="checkbox" id="only-diff"> 차이 있는 행만</label>
         </div>
         <div class="subtabs" id="site-tabs" role="tablist"></div>
@@ -197,12 +213,6 @@ td.zero{color:var(--line-strong)}
         <div class="scroll"><table id="detail"></table></div>
       </section>
 
-      <section class="panel" id="settle-panel" hidden>
-        <div class="panel-head">
-          <div><h2>5. 정산분 확인</h2><p class="hint" id="settle-sub"></p></div>
-        </div>
-        <div class="scroll" id="settle-wrap"><table id="settle"></table></div>
-      </section>
     </div>
   </div>
 
