@@ -1088,7 +1088,7 @@ const Out = (() => {
 
   function settleSheet(wb, R) {
     const S = R.settle; if (!S) return;
-    const ws = wb.addWorksheet('정산확인', { properties: { tabColor: { argb: 'FFED7D31' } } });   // 탭 색: 주황 강조
+    const ws = wb.addWorksheet('정산확인', { properties: { tabColor: { argb: 'FF1F6FD1' } } });   // 탭 색: 파랑 강조
     const mo = R.month || '', pm = R.month ? (R.month === 1 ? 12 : R.month - 1) : '';
     ws.columns = [{ width: 12 }, { width: 13 }, { width: 12 }, ...Array(10).fill({ width: 12 }), { width: 12 }, { width: 12 }, { width: 12 }];
     const YEL = fill('FFFFFFCC');
@@ -1186,8 +1186,8 @@ const Out = (() => {
   async function build(m, R) {
     const wb = new ExcelJS.Workbook(); wb.creator = m.title; wb.created = new Date();
     const used = new Set(['고지서', '코스트센터 비교', '정산확인']);
-    tongjiSheet(wb, R, m);   // 코스트센터 비교: 맨 앞 시트
-    if (m.id === 'hi') settleSheet(wb, R);   // 정산확인: 두 번째 시트
+    if (m.id === 'hi') settleSheet(wb, R);   // 정산확인: 맨 앞 시트 (건강보험)
+    tongjiSheet(wb, R, m);   // 코스트센터 비교: 그다음 시트
     R.groups.forEach(g => compareSheet(wb, safe(g.label + '비교', used), g, m));
     wb.addWorksheet(safe('자료>>', used));
     noticeSheet(wb, R);
