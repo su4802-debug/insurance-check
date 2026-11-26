@@ -800,16 +800,17 @@ function renderSettle() {
   const n0 = v => v ? fmt(v) : '';
   const dc = v => { const r = Math.round(v); return `<td class="n ${r > 0 ? 'd-pos' : r < 0 ? 'd-neg' : 'zero'}">${r ? fmt(r) : '0'}</td>`; };
   const lab = s => (R.labels && R.labels[s]) || s || '미분류';
-  const body = S.rows.map(r => {
+  const ord = new Map(S.sites.map((x, i) => [x.site, i]));
+  const body = S.rows.map((r, i) => ({ r, i })).sort((p, q) => ((ord.get(p.r.site) ?? 99) - (ord.get(q.r.site) ?? 99)) || p.i - q.i).map(o => o.r).map(r => {
     const d = r.prev ? (r.n.hiAdj + r.n.ltAdj) - (r.prev.hiAdj + r.prev.ltAdj) : null;
-    return `<tr><td><b style="font-weight:500">${esc(r.name)}</b></td><td class="muted">${esc(lab(r.site))}</td>
+    return `<tr><td class="muted">${esc(lab(r.site))}</td><td><b style="font-weight:500">${esc(r.name)}</b></td>
       <td><span class="chip n-${NOTE.type(r.reason)}">${esc(r.reason)}</span></td>
       <td class="n bl">${n0(r.n.hiAdj)}</td><td class="n">${n0(r.n.ltAdj)}</td>
       <td class="n bl">${r.prev ? n0(r.prev.hiAdj) : ''}</td><td class="n">${r.prev ? n0(r.prev.ltAdj) : ''}</td>
       ${d == null ? `<td class="n bl">${r.missing ? '<span class="chip n-miss">전월 급여대장 없음</span>' : ''}</td>` : dc(d).replace('<td class="n ', '<td class="n bl ')}</tr>`;
   }).join('');
   $('#settle').innerHTML = `<thead><tr><th></th><th></th><th></th><th class="grp" colspan="2">${mo}월 건강고지</th><th class="grp" colspan="2">${pm}월 급여 선정산</th><th class="grp">차이</th></tr>
-    <tr><th>성명</th><th>사업장</th><th>정산사유</th><th class="n grp" style="text-align:right">건강정산</th><th class="n" style="text-align:right">요양정산</th><th class="n grp" style="text-align:right">건강정산</th><th class="n" style="text-align:right">요양정산</th><th class="n grp" style="text-align:right">고지−선정산</th></tr></thead>
+    <tr><th>사업장</th><th>성명</th><th>정산사유</th><th class="n grp" style="text-align:right">건강정산</th><th class="n" style="text-align:right">요양정산</th><th class="n grp" style="text-align:right">건강정산</th><th class="n" style="text-align:right">요양정산</th><th class="n grp" style="text-align:right">고지−선정산</th></tr></thead>
     <tbody>${body || '<tr><td colspan="8" class="muted">확인할 정산분이 없습니다.</td></tr>'}</tbody>`;
 }
 
@@ -1089,32 +1090,35 @@ const Out = (() => {
     const S = R.settle; if (!S) return;
     const ws = wb.addWorksheet('정산확인', { properties: { tabColor: { argb: 'FFED7D31' } } });   // 탭 색: 주황 강조
     const mo = R.month || '', pm = R.month ? (R.month === 1 ? 12 : R.month - 1) : '';
-    ws.columns = [{ width: 12 }, { width: 13 }, ...Array(11).fill({ width: 12 }), { width: 12 }, { width: 12 }, { width: 12 }];
+    ws.columns = [{ width: 12 }, { width: 13 }, { width: 12 }, ...Array(10).fill({ width: 12 }), { width: 12 }, { width: 12 }, { width: 12 }];
     const YEL = fill('FFFFFFCC');
-    // ── 위 표: 개인별 정산분 ──
-    ws.mergeCells('C2:D2'); ws.mergeCells('E2:F2');
-    ws.getCell('C2').value = `${mo}월 건강고지`;
-    ws.getCell('E2').value = `${pm}월 급여 선정산` + (R.hasPrev ? '' : ' (전월 급여대장 미업로드)');
-    ['C2', 'D2'].forEach(a => style(ws.getCell(a), { bold: true, fill: HEAD, align: 'center' }));
-    ['E2', 'F2'].forEach(a => style(ws.getCell(a), { bold: true, fill: HEAD2, align: 'center' }));
-    ['성명', '정산사유', '건강정산', '요양정산', '건강정산', '요양정산', '비고'].forEach((t, i) =>
-      style(Object.assign(ws.getCell(3, i + 1), { value: t }), { bold: true, fill: i >= 4 && i <= 5 ? HEAD2 : HEAD, align: 'center' }));
+    const lab = st => (S.sites.find(x => x.site === st) || {}).label || st || '미분류';
+    // ── 위 표: 개인별 정산분 (A열 사업장 → 정렬·필터 가능) ──
+    ws.mergeCells('D2:E2'); ws.mergeCells('F2:G2');
+    ws.getCell('D2').value = `${mo}월 건강고지`;
+    ws.getCell('F2').value = `${pm}월 급여 선정산` + (R.hasPrev ? '' : ' (전월 급여대장 미업로드)');
+    ['D2', 'E2'].forEach(a => style(ws.getCell(a), { bold: true, fill: HEAD, align: 'center' }));
+    ['F2', 'G2'].forEach(a => style(ws.getCell(a), { bold: true, fill: HEAD2, align: 'center' }));
+    ['사업장', '성명', '정산사유', '건강정산', '요양정산', '건강정산', '요양정산', '비고'].forEach((t, i) =>
+      style(Object.assign(ws.getCell(3, i + 1), { value: t }), { bold: true, fill: i >= 5 && i <= 6 ? HEAD2 : HEAD, align: 'center' }));
+    // 기본 정렬: 사업장 순서(아래 표와 같은 순서) → 고지서 순서
+    const order = new Map(S.sites.map((x, i) => [x.site, i]));
+    const rows = S.rows.map((x, i) => ({ x, i })).sort((p, q) => ((order.get(p.x.site) ?? 99) - (order.get(q.x.site) ?? 99)) || p.i - q.i).map(o => o.x);
     let r = 4;
-    const siteRows = {};
     const nz = v => v ? v : null;
-    S.rows.forEach(x => {
+    rows.forEach(x => {
       const row = ws.getRow(r);
-      [x.name, x.reason, nz(x.n.hiAdj), nz(x.n.ltAdj), x.prev ? nz(x.prev.hiAdj) : null, x.prev ? nz(x.prev.ltAdj) : null, x.missing ? '전월 급여대장 없음' : null]
-        .forEach((v, i) => style(Object.assign(row.getCell(i + 1), { value: v }), { num: i >= 2 && i <= 5 ? NUM : null }));
-      if (x.reason) row.getCell(2).font = { name: FONT, size: 10, color: { argb: NOTE.xl[NOTE.type(x.reason)] } };
-      (siteRows[x.site] = siteRows[x.site] || []).push(r);
+      [lab(x.site), x.name, x.reason, nz(x.n.hiAdj), nz(x.n.ltAdj), x.prev ? nz(x.prev.hiAdj) : null, x.prev ? nz(x.prev.ltAdj) : null, x.missing ? '전월 급여대장 없음' : null]
+        .forEach((v, i) => style(Object.assign(row.getCell(i + 1), { value: v }), { num: i >= 3 && i <= 6 ? NUM : null }));
+      if (x.reason) row.getCell(3).font = { name: FONT, size: 10, color: { argb: NOTE.xl[NOTE.type(x.reason)] } };
       r++;
     });
     const top1 = 4, topN = Math.max(4, r - 1), sumR = r;
+    if (rows.length) ws.autoFilter = { from: 'A3', to: `H${topN}` };   // 사업장·성명 등으로 정렬/필터
     const sums = [S.rows.reduce((a, x) => a + x.n.hiAdj, 0), S.rows.reduce((a, x) => a + x.n.ltAdj, 0),
       S.rows.reduce((a, x) => a + (x.prev ? x.prev.hiAdj : 0), 0), S.rows.reduce((a, x) => a + (x.prev ? x.prev.ltAdj : 0), 0)];
-    style(Object.assign(ws.getCell(sumR, 1), { value: '합계' }), { bold: true, fill: TOT }); style(ws.getCell(sumR, 2), { fill: TOT }); style(ws.getCell(sumR, 7), { fill: TOT });
-    ['C', 'D', 'E', 'F'].forEach((L, i) => style(Object.assign(ws.getCell(`${L}${sumR}`), { value: { formula: S.rows.length ? `SUM(${L}${top1}:${L}${topN})` : '0', result: sums[i] } }), { bold: true, fill: TOT, num: NUM }));
+    style(Object.assign(ws.getCell(sumR, 1), { value: '합계' }), { bold: true, fill: TOT }); [2, 3, 8].forEach(c => style(ws.getCell(sumR, c), { fill: TOT }));
+    ['D', 'E', 'F', 'G'].forEach((L, i) => style(Object.assign(ws.getCell(`${L}${sumR}`), { value: { formula: S.rows.length ? `SUM(${L}${top1}:${L}${topN})` : '0', result: sums[i] } }), { bold: true, fill: TOT, num: NUM }));
     // ── 아래 표: 사업장별 고지서·급여대장·차이 + 전월 선정산 ──
     const h1 = sumR + 2, h2 = h1 + 1;
     ws.mergeCells(h1, 2, h1, 5); ws.mergeCells(h1, 6, h1, 9); ws.mergeCells(h1, 10, h1, 13); ws.mergeCells(h1, 14, h2, 14);
@@ -1135,8 +1139,8 @@ const Out = (() => {
         row.getCell(10 + i).value = { formula: `${L(2 + i)}${rr}-${L(6 + i)}${rr}`, result: sg.tot.diff[k] || 0 };
       });
       row.getCell(14).value = { formula: `SUM(J${rr},L${rr})`, result: sg.N };
-      const rs = siteRows[sg.site] || [];
-      row.getCell(15).value = rs.length ? { formula: `SUM(${rs.map(x => `E${x}:F${x}`).join(',')})`, result: sg.O } : null;
+      // 전월 선정산: 위 표에서 사업장이 같은 행의 전월 건강·요양 정산 합계 (위 표를 정렬해도 맞게 SUMIF 사용)
+      row.getCell(15).value = sg.rows.length ? { formula: `SUMIF($A$${top1}:$A$${topN},A${rr},$F$${top1}:$F$${topN})+SUMIF($A$${top1}:$A$${topN},A${rr},$G$${top1}:$G$${topN})`, result: sg.O } : null;
       row.getCell(16).value = { formula: `N${rr}-N(O${rr})`, result: sg.P };
       for (let c = 1; c <= 16; c++) style(row.getCell(c), { num: c >= 2 ? (c >= 10 ? DIFF : NUM) : null, fill: c === 16 && Math.round(sg.P) !== 0 ? HL : null, bold: c === 16 });
       rr++;
