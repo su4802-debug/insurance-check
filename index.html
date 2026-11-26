@@ -499,7 +499,7 @@ const Core = (() => {
   return { parsePayroll, parseRoster, parseNoticeHI, parseNoticeNP, parseAlias, reconcile, defaultLabels, norm, num };
 })();
 
-/* ==== 통지서: 고지서·급여대장 인원을 사업장 → 부서별로 묶기 ==== */
+/* ==== 코스트센터 비교: 고지서·급여대장 인원을 사업장 → 부서별로 묶기 ==== */
 function noticeByDept(R, m) {
   const NONE = '(부서 미확인)';
   const z = ks => { const t = {}; ks.forEach(k => t[k] = 0); return t; };
@@ -670,7 +670,7 @@ function renderChrome() {
     <li><b>{사업장}비교</b>고지서 ${m.nLabels.length}항목 · 급여대장 ${m.pLabels.length}항목 · 차이(고지서−급여대장) · 비고</li>
     <li><b>자료&gt;&gt;</b>구분용 빈 시트</li>
     <li><b>고지서</b>공단 고지 원본 + 근무지 · 부서명 열</li>
-    <li><b>통지서</b>왼쪽 고지서 정리표(퇴사자 포함, 부서별) · 오른쪽 같은 부서의 급여대장 입력값</li>
+    <li><b>코스트센터 비교</b>왼쪽 고지서 정리표(퇴사자 포함, 부서별) · 오른쪽 같은 부서의 급여대장 입력값</li>
     <li><b>{월}월 급여({사업장})</b>사업장별 급여대장 ${esc(m.short)} 항목 + 부서별 합계</li>`;
   $('#only-diff').checked = !!state.onlyDiff[m.id];
 }
@@ -964,7 +964,7 @@ const Out = (() => {
 
   function tongjiSheet(wb, R, m) {
     // 왼쪽: 고지서 정리표 (고지서 전체 인원, 직원명부 부서명 기준) / 한 칸 띄우고 오른쪽: 같은 부서의 급여대장 입력값
-    const ws = wb.addWorksheet('통지서', { views: [{ state: 'frozen', ySplit: 2 }] });
+    const ws = wb.addWorksheet('코스트센터 비교', { views: [{ state: 'frozen', ySplit: 2 }] });
     const nN = m.nKeys.length, nP = m.pKeys.length;
     const cN = 4, cGap = cN + nN, cR = cGap + 1, cRP = cR + 1, last = cRP + nP - 1;   // 1-based
     ws.columns = [{ width: 14 }, { width: 18 }, { width: 7 }, ...m.nKeys.map(() => ({ width: 17 })), { width: 2 }, { width: 18 }, ...m.pKeys.map(() => ({ width: 20 }))];
@@ -1032,7 +1032,7 @@ const Out = (() => {
 
   async function build(m, R) {
     const wb = new ExcelJS.Workbook(); wb.creator = m.title; wb.created = new Date();
-    const used = new Set(['고지서', '통지서']);
+    const used = new Set(['고지서', '코스트센터 비교']);
     R.groups.forEach(g => compareSheet(wb, safe(g.label + '비교', used), g, m));
     wb.addWorksheet(safe('자료>>', used));
     noticeSheet(wb, R);
