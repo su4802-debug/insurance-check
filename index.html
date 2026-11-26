@@ -155,6 +155,8 @@ td.zero{color:var(--line-strong)}
           <label class="btn small pick">파일 선택<input type="file" data-kind="roster" accept=".xls,.xlsx,.xlsm,.csv"></label></div>
         <div class="slot" id="slot-notice"><span class="lbl" id="notice-lbl"></span><span class="fname muted"></span><span class="state"></span>
           <label class="btn small pick">파일 선택<input type="file" data-kind="notice" accept=".xls,.xlsx,.xlsm,.csv"></label></div>
+        <div class="slot" id="slot-prev"><span class="lbl">전월 급여대장 <span class="chip">선택 · 정산확인용</span></span><span class="fname muted"></span><span class="state"></span>
+          <label class="btn small pick">파일 선택<input type="file" data-kind="pay_prev" accept=".xls,.xlsx,.xlsm,.csv"></label></div>
       </div>
       <div id="run-msg"></div>
     </section>
@@ -193,6 +195,13 @@ td.zero{color:var(--line-strong)}
         <div class="subtabs" id="site-tabs" role="tablist"></div>
         <div class="legend" id="note-legend"></div>
         <div class="scroll"><table id="detail"></table></div>
+      </section>
+
+      <section class="panel" id="settle-panel" hidden>
+        <div class="panel-head">
+          <div><h2>5. 정산분 확인</h2><p class="hint" id="settle-sub"></p></div>
+        </div>
+        <div class="scroll" id="settle-wrap"><table id="settle"></table></div>
       </section>
     </div>
   </div>
@@ -522,6 +531,33 @@ function noticeByDept(R, m) {
   }).filter(sg => sg.depts.length);
 }
 
+/* ==== 정산확인: 당월 고지 정산분 ↔ 전월 급여대장 선정산 ==== */
+// 대상: 당월 고지서에 건강·요양 정산이 있는데 당월 급여대장에서는 정산하지 않은 사람 (전월 퇴사자 등)
+function settleCheck(R, prevPay, alias) {
+  const aliasMap = new Map(); (alias || []).forEach(([a, b]) => { if (b) aliasMap.set(a, b); });
+  const prevBy = new Map(); (prevPay || []).forEach(p => { if (!prevBy.has(p.name)) prevBy.set(p.name, p); });
+  const rows = [];
+  R.lines.forEach(l => {
+    if (!l.src || !l.n) return;
+    const nh = l.n.hiAdj || 0, nl = l.n.ltAdj || 0;
+    if (!nh && !nl) return;
+    const ch = (l.p && l.p.hiAdj) || 0, cl = (l.p && l.p.ltAdj) || 0;
+    if (ch || cl) return;   // 당월 급여대장에서 정산한 사람은 사업장 비교에서 확인
+    const names = [l.name, l.noticeName, aliasMap.get(l.noticeName)].filter(Boolean);
+    const pp = prevPay ? (names.map(n => prevBy.get(n)).find(Boolean) || null) : null;
+    const quit = l.notes.find(x => /퇴사$/.test(x));
+    rows.push({ name: l.name, site: l.site, reason: quit || '기타', n: { hiAdj: nh, ltAdj: nl },
+      prev: pp ? { hiAdj: pp.hiAdj || 0, ltAdj: pp.ltAdj || 0 } : null, missing: !!prevPay && !pp });
+  });
+  const sites = R.groups.map(g => {
+    const rs = rows.filter(r => r.site === g.site);
+    const N = (g.tot.diff.hi || 0) + (g.tot.diff.lt || 0);
+    const O = rs.reduce((a, r) => a + (r.prev ? r.prev.hiAdj + r.prev.ltAdj : 0), 0);
+    return { label: g.label, site: g.site, tot: g.tot, N, O, P: N - O, rows: rs };
+  });
+  return { rows, sites };
+}
+
 /* ==== 비고 종류 (종류마다 색을 다르게) ==== */
 const NOTE = {
   type(n) {
@@ -597,7 +633,7 @@ async function readRowsAll(file) {
   return wb.SheetNames.map(n => ({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true, blankrows: false }) }));
 }
 const PARSERS = {
-  pay: r => Core.parsePayroll(r), roster: r => Core.parseRoster(r),
+  pay: r => Core.parsePayroll(r), pay_prev: r => Core.parsePayroll(r), roster: r => Core.parseRoster(r),
   notice_hi: r => MODES.hi.parse(r), notice_np: r => MODES.np.parse(r), alias: r => Core.parseAlias(r)
 };
 function detectKind(sheets) {
@@ -620,7 +656,7 @@ function parseKind(kind, sheets) {
   }
   throw err || new Error('읽을 수 있는 행이 없습니다.');
 }
-const KLABEL = { pay: '급여대장', roster: '직원명부', notice_hi: '건강보험 고지', notice_np: '국민연금 고지', alias: '이름구분' };
+const KLABEL = { pay: '급여대장', pay_prev: '전월 급여대장', roster: '직원명부', notice_hi: '건강보험 고지', notice_np: '국민연금 고지', alias: '이름구분' };
 
 async function loadFile(file, forced) {
   let sheets;
@@ -628,6 +664,9 @@ async function loadFile(file, forced) {
   let kind = forced || detectKind(sheets);
   if (!kind) { showMsg('#run-msg', 'err', `${file.name}: 어떤 파일인지 알 수 없습니다. 해당 칸의 "파일 선택"으로 직접 올려 주세요.`); return; }
   if (kind === 'alias') return importAlias(file, sheets);
+  if (!forced && kind === 'pay' && state.slot.pay && state.slot.pay.ok && state.slot.pay.file !== file.name) {
+    toast(`급여대장을 ${file.name}(으)로 바꿨습니다. 전월 급여대장은 "전월 급여대장" 칸의 파일 선택으로 올려 주세요.`);
+  }
   try {
     const v = parseKind(kind, sheets);
     state.data[kind] = v;
@@ -658,6 +697,8 @@ function renderSlots() {
   put($('#slot-pay'), 'pay', '사원명 · 사업장명 · ' + m.payNeedLabel + ' …');
   put($('#slot-roster'), 'roster', '사업장명 · 사원명 · 근무지명 · 재직구분 …');
   put($('#slot-notice'), noticeKind(m.id), m.noticeHint);
+  put($('#slot-prev'), 'pay_prev', '퇴사자 정산분 비교용 · 사원명 · 건강보험정산 · 장기요양보험정산 …');
+  $('#slot-prev').hidden = m.id !== 'hi';
   $('#notice-lbl').textContent = m.noticeLabel;
 }
 function renderChrome() {
@@ -670,7 +711,8 @@ function renderChrome() {
     <li><b>{사업장}비교</b>고지서 ${m.nLabels.length}항목 · 급여대장 ${m.pLabels.length}항목 · 차이(고지서−급여대장) · 비고</li>
     <li><b>자료&gt;&gt;</b>구분용 빈 시트</li>
     <li><b>고지서</b>공단 고지 원본 + 근무지 · 부서명 열</li>
-    <li><b>코스트센터 비교</b>왼쪽 고지서 정리표(퇴사자 포함, 부서별) · 오른쪽 같은 부서의 급여대장 입력값</li>
+    <li><b>코스트센터 비교</b>왼쪽 고지서 정리표(퇴사자 포함, 부서별) · 오른쪽 같은 부서의 급여대장 입력값</li>${m.id === 'hi' ? `
+    <li><b>정산확인</b>당월 고지 정산분 ↔ 전월 급여대장 선정산(퇴사자 등) · 사업장별 차이 정리 (전월 급여대장 필요)</li>` : ''}
     <li><b>{월}월 급여({사업장})</b>사업장별 급여대장 ${esc(m.short)} 항목 + 부서별 합계</li>`;
   $('#only-diff').checked = !!state.onlyDiff[m.id];
 }
@@ -687,6 +729,11 @@ function run() {
   }
   try {
     state.result[m.id] = Core.reconcile({ mode: m, pay, roster, notice, alias: state.alias.rows, labels: state.labels });
+    if (m.id === 'hi') {
+      const Rh = state.result.hi;
+      Rh.settle = settleCheck(Rh, state.data.pay_prev, state.alias.rows);
+      Rh.hasPrev = !!state.data.pay_prev;
+    }
     showMsg('#run-msg', '', '');
   } catch (e) { console.error(e); showMsg('#run-msg', 'err', '분석 중 오류: ' + e.message); return; }
   $('#results').hidden = false; $('#empty-out').hidden = true;
@@ -711,7 +758,7 @@ function renderResults() {
   }).join('');
   $('#label-grid').innerHTML = R.groups.filter(g => g.site).map((g, i) =>
     `<label>${esc(g.site)}<input class="txt" id="lab-${i}" data-site="${esc(g.site)}" value="${esc(g.label)}"></label>`).join('');
-  renderUnmatched(); renderTabs(); renderDetail();
+  renderUnmatched(); renderTabs(); renderDetail(); renderSettle();
 }
 
 function renderUnmatched() {
@@ -729,6 +776,31 @@ function renderUnmatched() {
       <button class="btn small" data-link="${i}">연결</button></div>`).join('') +
     (pays.length ? `<p class="hint" style="margin-top:6px">고지서에 없는 급여대장 ${esc(m.short)} 공제자: ${pays.map(p => `<span class="chip warn">${esc(p.name)}</span>`).join(' ')}</p>` : '') +
     (items.length ? `<p class="hint">퇴사 후 고지된 정산·상실분처럼 급여대장에 원래 없는 경우는 연결하지 않아도 됩니다. 결과 파일 비고에 "급여대장 없음"으로 표시됩니다.</p>` : '');
+}
+
+function renderSettle() {
+  const panel = $('#settle-panel');
+  const R = state.result.hi;
+  if (state.view !== 'hi' || !R || !R.settle) { panel.hidden = true; return; }
+  panel.hidden = false;
+  const S = R.settle, mo = R.month || '', pm = R.month ? (R.month === 1 ? 12 : R.month - 1) : '';
+  $('#settle-sub').textContent = R.hasPrev
+    ? `${mo}월 고지서에 정산분이 있지만 ${mo}월 급여대장에서 정산하지 않은 ${S.rows.length}명을 ${pm}월 급여대장의 선정산과 비교했습니다. 내려받으면 "정산확인" 시트로 들어갑니다.`
+    : `"전월 급여대장"을 올리면 아래 ${S.rows.length}명의 고지 정산분을 ${pm}월 급여대장의 건강·요양 정산과 비교합니다.`;
+  const n0 = v => v ? fmt(v) : '';
+  const dc = v => { const r = Math.round(v); return `<td class="n ${r > 0 ? 'd-pos' : r < 0 ? 'd-neg' : 'zero'}">${r ? fmt(r) : '0'}</td>`; };
+  const lab = s => (R.labels && R.labels[s]) || s || '미분류';
+  const body = S.rows.map(r => {
+    const d = r.prev ? (r.n.hiAdj + r.n.ltAdj) - (r.prev.hiAdj + r.prev.ltAdj) : null;
+    return `<tr><td><b style="font-weight:500">${esc(r.name)}</b></td><td class="muted">${esc(lab(r.site))}</td>
+      <td><span class="chip n-${NOTE.type(r.reason)}">${esc(r.reason)}</span></td>
+      <td class="n bl">${n0(r.n.hiAdj)}</td><td class="n">${n0(r.n.ltAdj)}</td>
+      <td class="n bl">${r.prev ? n0(r.prev.hiAdj) : ''}</td><td class="n">${r.prev ? n0(r.prev.ltAdj) : ''}</td>
+      ${d == null ? `<td class="n bl">${r.missing ? '<span class="chip n-miss">전월 급여대장 없음</span>' : ''}</td>` : dc(d).replace('<td class="n ', '<td class="n bl ')}</tr>`;
+  }).join('');
+  $('#settle').innerHTML = `<thead><tr><th></th><th></th><th></th><th class="grp" colspan="2">${mo}월 건강고지</th><th class="grp" colspan="2">${pm}월 급여 선정산</th><th class="grp">차이</th></tr>
+    <tr><th>성명</th><th>사업장</th><th>정산사유</th><th class="n grp" style="text-align:right">건강정산</th><th class="n" style="text-align:right">요양정산</th><th class="n grp" style="text-align:right">건강정산</th><th class="n" style="text-align:right">요양정산</th><th class="n grp" style="text-align:right">고지−선정산</th></tr></thead>
+    <tbody>${body || '<tr><td colspan="8" class="muted">확인할 정산분이 없습니다.</td></tr>'}</tbody>`;
 }
 
 function renderTabs() {
@@ -1003,6 +1075,73 @@ const Out = (() => {
     nt.font = { name: FONT, size: 9, color: { argb: 'FF666666' } };
   }
 
+  function settleSheet(wb, R) {
+    const S = R.settle; if (!S) return;
+    const ws = wb.addWorksheet('정산확인', { properties: { tabColor: { argb: 'FFED7D31' } } });   // 탭 색: 주황 강조
+    const mo = R.month || '', pm = R.month ? (R.month === 1 ? 12 : R.month - 1) : '';
+    ws.columns = [{ width: 12 }, { width: 13 }, ...Array(11).fill({ width: 12 }), { width: 12 }, { width: 12 }, { width: 12 }];
+    const YEL = fill('FFFFFFCC');
+    // ── 위 표: 개인별 정산분 ──
+    ws.mergeCells('C2:D2'); ws.mergeCells('E2:F2');
+    ws.getCell('C2').value = `${mo}월 건강고지`;
+    ws.getCell('E2').value = `${pm}월 급여 선정산` + (R.hasPrev ? '' : ' (전월 급여대장 미업로드)');
+    ['C2', 'D2'].forEach(a => style(ws.getCell(a), { bold: true, fill: HEAD, align: 'center' }));
+    ['E2', 'F2'].forEach(a => style(ws.getCell(a), { bold: true, fill: HEAD2, align: 'center' }));
+    ['성명', '정산사유', '건강정산', '요양정산', '건강정산', '요양정산', '비고'].forEach((t, i) =>
+      style(Object.assign(ws.getCell(3, i + 1), { value: t }), { bold: true, fill: i >= 4 && i <= 5 ? HEAD2 : HEAD, align: 'center' }));
+    let r = 4;
+    const siteRows = {};
+    const nz = v => v ? v : null;
+    S.rows.forEach(x => {
+      const row = ws.getRow(r);
+      [x.name, x.reason, nz(x.n.hiAdj), nz(x.n.ltAdj), x.prev ? nz(x.prev.hiAdj) : null, x.prev ? nz(x.prev.ltAdj) : null, x.missing ? '전월 급여대장 없음' : null]
+        .forEach((v, i) => style(Object.assign(row.getCell(i + 1), { value: v }), { num: i >= 2 && i <= 5 ? NUM : null }));
+      if (x.reason) row.getCell(2).font = { name: FONT, size: 10, color: { argb: NOTE.xl[NOTE.type(x.reason)] } };
+      (siteRows[x.site] = siteRows[x.site] || []).push(r);
+      r++;
+    });
+    const top1 = 4, topN = Math.max(4, r - 1), sumR = r;
+    const sums = [S.rows.reduce((a, x) => a + x.n.hiAdj, 0), S.rows.reduce((a, x) => a + x.n.ltAdj, 0),
+      S.rows.reduce((a, x) => a + (x.prev ? x.prev.hiAdj : 0), 0), S.rows.reduce((a, x) => a + (x.prev ? x.prev.ltAdj : 0), 0)];
+    style(Object.assign(ws.getCell(sumR, 1), { value: '합계' }), { bold: true, fill: TOT }); style(ws.getCell(sumR, 2), { fill: TOT }); style(ws.getCell(sumR, 7), { fill: TOT });
+    ['C', 'D', 'E', 'F'].forEach((L, i) => style(Object.assign(ws.getCell(`${L}${sumR}`), { value: { formula: S.rows.length ? `SUM(${L}${top1}:${L}${topN})` : '0', result: sums[i] } }), { bold: true, fill: TOT, num: NUM }));
+    // ── 아래 표: 사업장별 고지서·급여대장·차이 + 전월 선정산 ──
+    const h1 = sumR + 2, h2 = h1 + 1;
+    ws.mergeCells(h1, 2, h1, 5); ws.mergeCells(h1, 6, h1, 9); ws.mergeCells(h1, 10, h1, 13); ws.mergeCells(h1, 14, h2, 14);
+    ws.getCell(h1, 2).value = '고지서'; ws.getCell(h1, 6).value = '급여대장'; ws.getCell(h1, 10).value = '고지서-급여대장 차이';
+    ws.getCell(h1, 14).value = '차이 합계'; ws.getCell(h1, 15).value = '전월';
+    const sub = ['사업장', '건강', '건강정산', '요양', '요양정산', '건강', '건강정산', '요양', '요양정산', '건강', '건강정산', '요양', '요양정산', null, '선정산', '차이'];
+    sub.forEach((t, i) => { if (t != null) ws.getCell(h2, i + 1).value = t; });
+    for (let c = 1; c <= 16; c++) [h1, h2].forEach(rr => style(ws.getCell(rr, c), {
+      bold: true, align: 'center', fill: c === 10 || c === 12 || c === 14 ? YEL : c >= 6 && c <= 9 ? HEAD2 : c >= 10 && c <= 13 ? HEAD3 : HEAD }));
+    const K4 = ['hi', 'hiAdj', 'lt', 'ltAdj'];
+    let rr = h2 + 1; const first = rr;
+    S.sites.forEach(sg => {
+      const row = ws.getRow(rr);
+      row.getCell(1).value = sg.label;
+      K4.forEach((k, i) => {
+        row.getCell(2 + i).value = sg.tot.n[k] || 0;
+        row.getCell(6 + i).value = sg.tot.p[k] || 0;
+        row.getCell(10 + i).value = { formula: `${L(2 + i)}${rr}-${L(6 + i)}${rr}`, result: sg.tot.diff[k] || 0 };
+      });
+      row.getCell(14).value = { formula: `SUM(J${rr},L${rr})`, result: sg.N };
+      const rs = siteRows[sg.site] || [];
+      row.getCell(15).value = rs.length ? { formula: `SUM(${rs.map(x => `E${x}:F${x}`).join(',')})`, result: sg.O } : null;
+      row.getCell(16).value = { formula: `N${rr}-N(O${rr})`, result: sg.P };
+      for (let c = 1; c <= 16; c++) style(row.getCell(c), { num: c >= 2 ? (c >= 10 ? DIFF : NUM) : null, fill: c === 16 && Math.round(sg.P) !== 0 ? HL : null, bold: c === 16 });
+      rr++;
+    });
+    const tr = ws.getRow(rr); tr.getCell(1).value = `${mo}월 고지`;
+    const colTot = c => { if (c <= 9) { const k = K4[(c - 2) % 4]; return c <= 5 ? S.sites.reduce((a, s) => a + (s.tot.n[k] || 0), 0) : S.sites.reduce((a, s) => a + (s.tot.p[k] || 0), 0); }
+      if (c <= 13) return S.sites.reduce((a, s) => a + (s.tot.diff[K4[c - 10]] || 0), 0);
+      return S.sites.reduce((a, s) => a + (c === 14 ? s.N : c === 15 ? s.O : s.P), 0); };
+    for (let c = 2; c <= 16; c++) tr.getCell(c).value = { formula: `SUM(${L(c)}${first}:${L(c)}${Math.max(first, rr - 1)})`, result: colTot(c) };
+    for (let c = 1; c <= 16; c++) style(tr.getCell(c), { bold: true, fill: TOT, num: c >= 2 ? (c >= 10 ? DIFF : NUM) : null });
+    const nt = ws.getRow(rr + 2).getCell(1);
+    nt.value = `※ 위 표: ${mo}월 고지서에 건강·요양 정산이 있지만 ${mo}월 급여대장에서 정산하지 않은 인원(전월 퇴사자 등) → ${pm}월 급여대장에서 미리 공제한 정산액과 비교 · 아래 표 "차이" = 차이 합계(건강+요양) − 전월 선정산`;
+    nt.font = { name: FONT, size: 9, color: { argb: 'FF666666' } };
+  }
+
   function paySheet(wb, name, g, m) {
     const K = m.pKeys, nK = K.length;
     const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -1032,8 +1171,9 @@ const Out = (() => {
 
   async function build(m, R) {
     const wb = new ExcelJS.Workbook(); wb.creator = m.title; wb.created = new Date();
-    const used = new Set(['고지서', '코스트센터 비교']);
+    const used = new Set(['고지서', '코스트센터 비교', '정산확인']);
     tongjiSheet(wb, R, m);   // 코스트센터 비교: 맨 앞 시트
+    if (m.id === 'hi') settleSheet(wb, R);   // 정산확인: 두 번째 시트
     R.groups.forEach(g => compareSheet(wb, safe(g.label + '비교', used), g, m));
     wb.addWorksheet(safe('자료>>', used));
     noticeSheet(wb, R);
