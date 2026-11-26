@@ -670,7 +670,7 @@ function renderChrome() {
     <li><b>{사업장}비교</b>고지서 ${m.nLabels.length}항목 · 급여대장 ${m.pLabels.length}항목 · 차이(고지서−급여대장) · 비고</li>
     <li><b>자료&gt;&gt;</b>구분용 빈 시트</li>
     <li><b>고지서</b>공단 고지 원본 + 근무지 · 부서명 열</li>
-    <li><b>통지서</b>사업장 · 부서별로 고지서 합계(퇴사자 포함)와 급여대장 공제 합계, 차이를 나란히 비교</li>
+    <li><b>통지서</b>왼쪽 고지서 정리표(퇴사자 포함, 부서별) · 오른쪽 같은 부서의 급여대장 입력값</li>
     <li><b>{월}월 급여({사업장})</b>사업장별 급여대장 ${esc(m.short)} 항목 + 부서별 합계</li>`;
   $('#only-diff').checked = !!state.onlyDiff[m.id];
 }
@@ -963,33 +963,44 @@ const Out = (() => {
   }
 
   function tongjiSheet(wb, R, m) {
-    // 왼쪽: 고지서 전체 인원(직원명부 부서명 기준) / 가운데: 같은 사람들의 급여대장 입력 내용 / 오른쪽: 차이
-    const ws = wb.addWorksheet('통지서', { views: [{ state: 'frozen', xSplit: 2, ySplit: 2 }] });
-    const nN = m.nKeys.length, nP = m.pKeys.length, nD = m.diffs.length;
-    const cN = 3, cP = cN + 1 + nN, cD = cP + 1 + nP, last = cD + nD - 1;   // 1-based, 각 그룹 첫 칸 = 인원
-    ws.columns = [{ width: 16 }, { width: 20 }, { width: 7 }, ...m.nKeys.map(() => ({ width: 15 })), { width: 7 }, ...m.pKeys.map(() => ({ width: 15 })), ...m.diffs.map(() => ({ width: 14 }))];
-    const grp = (c0, n, t, f) => { if (n > 1) ws.mergeCells(1, c0, 1, c0 + n - 1); ws.getCell(1, c0).value = t; for (let c = c0; c < c0 + n; c++) [1, 2].forEach(r => style(ws.getCell(r, c), { bold: true, fill: f, align: 'center' })); };
-    ['사업장', '부서명'].forEach((t, i) => { ws.mergeCells(1, i + 1, 2, i + 1); ws.getCell(1, i + 1).value = t; style(ws.getCell(1, i + 1), { bold: true, fill: HEAD, align: 'center' }); style(ws.getCell(2, i + 1), { fill: HEAD }); });
-    grp(cN, 1 + nN, '고지서 기준', HEAD); grp(cP, 1 + nP, '급여대장', HEAD2); grp(cD, nD, '차이 (고지서−급여대장)', HEAD3);
-    ['인원', ...m.nLabels, '인원', ...m.pLabels, ...m.diffs.map(d => d.label)].forEach((t, i) => { ws.getCell(2, cN + i).value = t; });
-    const fmtRow = (row, o = {}) => {
-      for (let c = 1; c <= last; c++) {
-        const cnt = c === cN || c === cP, isD = c >= cD;
-        const v = row.getCell(c).value;
-        style(row.getCell(c), { ...o, num: c < cN ? null : cnt ? '#,##0' : isD ? DIFF : NUM, fill: o.fill || (isD && typeof v === 'number' && Math.round(v) !== 0 ? HL : null) });
-      }
+    // 왼쪽: 고지서 정리표 (고지서 전체 인원, 직원명부 부서명 기준) / 한 칸 띄우고 오른쪽: 같은 부서의 급여대장 입력값
+    const ws = wb.addWorksheet('통지서', { views: [{ state: 'frozen', ySplit: 2 }] });
+    const nN = m.nKeys.length, nP = m.pKeys.length;
+    const cN = 4, cGap = cN + nN, cR = cGap + 1, cRP = cR + 1, last = cRP + nP - 1;   // 1-based
+    ws.columns = [{ width: 14 }, { width: 18 }, { width: 7 }, ...m.nKeys.map(() => ({ width: 17 })), { width: 2 }, { width: 18 }, ...m.pKeys.map(() => ({ width: 20 }))];
+    // 1행: 표 제목, 2행: 열 제목
+    ws.getCell(1, 3).value = '고지서 기준 (직원명부 부서명)';
+    ws.getCell(1, cR).value = '급여대장 기준 (같은 부서)';
+    [ws.getCell(1, 3), ws.getCell(1, cR)].forEach(c => c.font = { name: FONT, size: 10, bold: true });
+    const leftHead = ['사업장', '부서명', '인원', ...m.nLabels.map(h => '합계 : 고지 ' + h)];
+    const rightHead = ['부서명', ...m.payHeads.map(h => '합계 : ' + h)];
+    leftHead.forEach((t, i) => style(Object.assign(ws.getCell(2, 1 + i), { value: t }), { bold: true, fill: HEAD, align: 'center' }));
+    rightHead.forEach((t, i) => style(Object.assign(ws.getCell(2, cR + i), { value: t }), { bold: true, fill: HEAD2, align: 'center' }));
+    // 급여대장 값이 고지서 값과 다르면 노란색 (같은 항목끼리 비교)
+    const pair = {}; m.diffs.forEach(d => pair[d.p] = d.n);
+    let r = 3;
+    const put = (site, dept, o, rowStyle = {}) => {
+      const row = ws.getRow(r++);
+      [site, dept, o.nCnt, ...m.nKeys.map(k => o.n[k])].forEach((v, i) => style(Object.assign(row.getCell(1 + i), { value: v }), { ...rowStyle, num: i === 2 ? '#,##0' : i > 2 ? NUM : null }));
+      style(Object.assign(row.getCell(cR), { value: dept }), rowStyle);
+      m.pKeys.forEach((k, i) => {
+        const v = o.p[k], nk = pair[k];
+        const diff = nk != null && Math.round(v - o.n[nk]) !== 0;
+        style(Object.assign(row.getCell(cRP + i), { value: v }), { ...rowStyle, num: NUM, fill: rowStyle.fill || (diff ? HL : null) });
+      });
     };
-    const vals = o => [o.nCnt, ...m.nKeys.map(k => o.n[k]), o.pCnt, ...m.pKeys.map(k => o.p[k]), ...m.diffs.map(d => o.d[d.key])];
-    const grand = { nCnt: 0, pCnt: 0, n: {}, p: {}, d: {} };
-    m.nKeys.forEach(k => grand.n[k] = 0); m.pKeys.forEach(k => grand.p[k] = 0); m.diffs.forEach(d => grand.d[d.key] = 0);
+    const grand = { nCnt: 0, n: {}, p: {} };
+    m.nKeys.forEach(k => grand.n[k] = 0); m.pKeys.forEach(k => grand.p[k] = 0);
     noticeByDept(R, m).forEach(sg => {
-      sg.depts.forEach(d => fmtRow(ws.addRow([sg.label, d.dept, ...vals(d)])));
-      fmtRow(ws.addRow([sg.label + ' 요약', '', ...vals(sg.tot)]), { bold: true, fill: TOT });
-      grand.nCnt += sg.tot.nCnt; grand.pCnt += sg.tot.pCnt;
-      m.nKeys.forEach(k => grand.n[k] += sg.tot.n[k]); m.pKeys.forEach(k => grand.p[k] += sg.tot.p[k]); m.diffs.forEach(d => grand.d[d.key] += sg.tot.d[d.key]);
+      sg.depts.forEach(d => put(sg.label, d.dept, d));
+      put(sg.label + ' 요약', '', sg.tot, { bold: true, fill: TOT });
+      grand.nCnt += sg.tot.nCnt; m.nKeys.forEach(k => grand.n[k] += sg.tot.n[k]); m.pKeys.forEach(k => grand.p[k] += sg.tot.p[k]);
     });
-    fmtRow(ws.addRow(['총합계', '', ...vals(grand)]), { bold: true, fill: HEAD });
-    const note = ws.addRow([]); ws.addRow(['※ 고지서 기준: 공단 고지서의 모든 인원(퇴사자 포함)을 직원명부 부서명으로 묶음 · 급여대장: 같은 부서 인원의 급여대장 공제액(고지서에 없는 공제자 포함)']).getCell(1).font = { name: FONT, size: 9, color: { argb: 'FF666666' } };
+    put('총합계', '', grand, { bold: true, fill: HEAD });
+    r++;
+    const nt = ws.getRow(r).getCell(1);
+    nt.value = '※ 왼쪽: 공단 고지서의 모든 인원(퇴사자 포함)을 직원명부 부서명으로 묶은 합계 · 오른쪽: 같은 부서의 급여대장 공제 합계 (노란 칸 = 고지서와 금액이 다름)';
+    nt.font = { name: FONT, size: 9, color: { argb: 'FF666666' } };
   }
 
   function paySheet(wb, name, g, m) {
