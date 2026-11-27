@@ -556,7 +556,7 @@ function settleCheck(R, prevPay, alias) {
     const names = [l.name, l.noticeName, aliasMap.get(l.noticeName)].filter(Boolean);
     const pp = prevPay ? (names.map(n => prevBy.get(n)).find(Boolean) || null) : null;
     const quit = l.notes.find(x => /퇴사$/.test(x));
-    rows.push({ name: l.name, site: l.site, reason: quit || '기타', n: { hiAdj: nh, ltAdj: nl },
+    rows.push({ name: l.name, noticeName: l.noticeName, quit: !!quit, site: l.site, reason: quit || '기타', n: { hiAdj: nh, ltAdj: nl },
       prev: pp ? { hiAdj: pp.hiAdj || 0, ltAdj: pp.ltAdj || 0 } : null, missing: !!prevPay && !pp });
   });
   const sites = R.groups.map(g => {
@@ -777,7 +777,10 @@ function renderUnmatched() {
   const all = state.data.pay.map(p => p.name);
   const free = all.filter(n => !usedPay.has(n));
   $('#pay-names').innerHTML = [...free, ...all.filter(n => !free.includes(n))].map(n => `<option value="${esc(n)}">`).join('');
-  const items = R.unmatchedNotice, pays = R.unmatchedPay;
+  // 3. 정산분 확인에 퇴사자로 잡힌 사람은 이름 연결이 필요 없으므로 제외
+  const settledQuit = new Set(m.id === 'hi' && R.settle ? R.settle.rows.filter(x => x.quit).map(x => x.noticeName) : []);
+  const items = R.unmatchedNotice.filter(u => !settledQuit.has(u.name)), pays = R.unmatchedPay;
+  const hiddenQuit = R.unmatchedNotice.length - items.length;
   $('#unmatched-panel').hidden = !items.length && !pays.length;
   const suggest = name => free.find(n => n.includes('(' + name + ')') || n.replace(/\s/g, '') === name.replace(/\s/g, '')) || '';
   $('#unmatched').innerHTML = items.map((u, i) => `<div class="unm-item">
@@ -785,6 +788,7 @@ function renderUnmatched() {
       <input class="txt" list="pay-names" id="unm-${i}" data-notice="${esc(u.name)}" placeholder="급여대장 이름 선택 또는 입력" value="${esc(suggest(u.name))}">
       <button class="btn small" data-link="${i}">연결</button></div>`).join('') +
     (pays.length ? `<p class="hint" style="margin-top:6px">고지서에 없는 급여대장 ${esc(m.short)} 공제자: ${pays.map(p => `<span class="chip warn">${esc(p.name)}</span>`).join(' ')}</p>` : '') +
+    (hiddenQuit ? `<p class="hint">"3. 정산분 확인"에 퇴사자로 표시된 ${hiddenQuit}명은 여기서 뺐습니다.</p>` : '') +
     (items.length ? `<p class="hint">퇴사 후 고지된 정산·상실분처럼 급여대장에 원래 없는 경우는 연결하지 않아도 됩니다. 결과 파일 비고에 "급여대장 없음"으로 표시됩니다.</p>` : '');
 }
 
